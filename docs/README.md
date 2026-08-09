@@ -68,10 +68,9 @@ python3 examples/generate_sine.py | cargo run -- - --width 80
 python3 examples/generate_sine.py | cargo run -- - --x-min 6 --x-max 12
 ```
 
-## Interactive line charts
+## Interactive figures
 
-Start a redraw-in-place session with a JSON file (interactive mode needs standard
-input for keyboard events):
+Start a redraw-in-place session with any supported JSON figure (interactive mode needs standard input for keyboard events):
 
 ```sh
 python3 examples/generate_sine.py > /tmp/sine.json
