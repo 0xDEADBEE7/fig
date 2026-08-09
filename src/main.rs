@@ -34,15 +34,15 @@ struct Cli {
     #[arg(long)]
     no_color: bool,
 
-    /// Minimum x value displayed by line figures
+    /// Minimum x value displayed by figures
     #[arg(long, allow_hyphen_values = true)]
     x_min: Option<f64>,
 
-    /// Maximum x value displayed by line figures
+    /// Maximum x value displayed by figures
     #[arg(long, allow_hyphen_values = true)]
     x_max: Option<f64>,
 
-    /// Open a redraw-in-place session (line figures only; input must be a file)
+    /// Open a redraw-in-place session (input must be a file)
     #[arg(short = 'i', long)]
     interactive: bool,
 }
@@ -87,6 +87,7 @@ fn main() -> Result<()> {
                 x_max: cli.x_max,
                 y_min: None,
                 y_max: None,
+                trim_output: true,
             }
         )?
     );

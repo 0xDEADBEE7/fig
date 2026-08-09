@@ -1,3 +1,5 @@
+use crate::layout::Point;
+use crate::plane::{Bounds, Plot, PlotEdge, PlotNode, Viewport};
 use crate::{DataPoint, LineFigure, RenderOptions};
 
 const COLORS: [u8; 8] = [39, 208, 46, 201, 226, 51, 196, 129];
@@ -49,31 +51,12 @@ pub(crate) fn render_line(figure: &LineFigure, options: RenderOptions) -> anyhow
     let max_y = options.y_max.unwrap_or(data_max_y);
     anyhow::ensure!(min_y < max_y, "the y viewport contains no range");
     let sample_count = right - left + 1;
+    let sampled_visible: Vec<Vec<DataPoint>> = visible
+        .iter()
+        .map(|points| largest_triangle_three_buckets(points, sample_count))
+        .collect();
     let mut dots = vec![vec![0_u8; options.width]; options.height];
     let mut owners = vec![vec![None; options.width]; options.height];
-
-    for (series_index, series) in visible.iter().enumerate() {
-        let sampled = largest_triangle_three_buckets(series, sample_count);
-        let points: Vec<(isize, isize)> = sampled
-            .iter()
-            .map(|point| {
-                scale(
-                    *point,
-                    (min_x, max_x, min_y, max_y),
-                    left,
-                    right,
-                    top,
-                    bottom,
-                )
-            })
-            .collect();
-        for point in &points {
-            put_dot(&mut dots, &mut owners, point.0, point.1, series_index);
-        }
-        for pair in points.windows(2) {
-            draw_line(&mut dots, &mut owners, pair[0], pair[1], series_index);
-        }
-    }
 
     let mut canvas = vec![
         vec![
@@ -85,6 +68,50 @@ pub(crate) fn render_line(figure: &LineFigure, options: RenderOptions) -> anyhow
         ];
         options.height
     ];
+    draw_grid(&mut canvas, left, right, top, bottom);
+
+    let mut plot_nodes = Vec::new();
+    let mut plot_edges = Vec::new();
+    for (series_index, series) in sampled_visible.iter().enumerate() {
+        let start = plot_nodes.len();
+        plot_nodes.extend(series.iter().map(|point| PlotNode {
+            position: Point {
+                x: point.x,
+                y: point.y,
+            },
+            label: None,
+            owner: Some(series_index),
+        }));
+        plot_edges.extend(
+            (start..start + series.len().saturating_sub(1)).map(|from| PlotEdge {
+                from,
+                to: from + 1,
+                owner: Some(series_index),
+            }),
+        );
+    }
+    let plot = Plot {
+        nodes: plot_nodes,
+        edges: plot_edges,
+    };
+    let view_bounds = Bounds {
+        min_x,
+        max_x,
+        min_y,
+        max_y,
+    };
+    let (plot_dots, plot_owners, _) = plot.pixels(
+        Viewport::plot(view_bounds),
+        right - left + 1,
+        bottom - top + 1,
+    );
+    for (plot_y, row) in plot_dots.into_iter().enumerate() {
+        for (plot_x, dots_value) in row.into_iter().enumerate() {
+            dots[top + plot_y][left + plot_x] = dots_value;
+            owners[top + plot_y][left + plot_x] = plot_owners[plot_y][plot_x];
+        }
+    }
+
     for y in top..=bottom {
         for x in left..=right {
             if dots[y][x] != 0 {
@@ -148,6 +175,23 @@ pub(crate) fn render_line(figure: &LineFigure, options: RenderOptions) -> anyhow
         .join("\n")
         .trim_end()
         .to_owned())
+}
+
+fn draw_grid(canvas: &mut [Vec<Cell>], left: usize, right: usize, top: usize, bottom: usize) {
+    const TICKS: usize = 5;
+    for tick in 0..TICKS {
+        let x = left + tick * (right - left) / (TICKS - 1);
+        let y = top + tick * (bottom - top) / (TICKS - 1);
+
+        for row in canvas.iter_mut().take(bottom + 1).skip(top) {
+            if row[x].ch == ' ' {
+                row[x].ch = '┆';
+            }
+        }
+        for cell in canvas[y].iter_mut().take(right + 1).skip(left) {
+            cell.ch = if cell.ch == '┆' { '┼' } else { '┄' };
+        }
+    }
 }
 
 fn bounds(figure: &LineFigure) -> (f64, f64, f64, f64) {
@@ -221,69 +265,6 @@ fn largest_triangle_three_buckets(points: &[DataPoint], threshold: usize) -> Vec
     }
     sampled.push(*points.last().expect("non-empty input"));
     sampled
-}
-
-fn scale(
-    point: DataPoint,
-    bounds: (f64, f64, f64, f64),
-    left: usize,
-    right: usize,
-    top: usize,
-    bottom: usize,
-) -> (isize, isize) {
-    let (min_x, max_x, min_y, max_y) = bounds;
-    let x = (left as f64
-        + (point.x - min_x) / (max_x - min_x).max(f64::EPSILON) * (right - left) as f64)
-        * 2.0;
-    let y = (bottom as f64
-        - (point.y - min_y) / (max_y - min_y).max(f64::EPSILON) * (bottom - top) as f64)
-        * 4.0;
-    (x.round() as isize, y.round() as isize)
-}
-
-fn draw_line(
-    dots: &mut [Vec<u8>],
-    owners: &mut [Vec<Option<usize>>],
-    (mut x, mut y): (isize, isize),
-    (x2, y2): (isize, isize),
-    owner: usize,
-) {
-    let (dx, dy) = ((x2 - x).abs(), -(y2 - y).abs());
-    let (sx, sy) = (if x < x2 { 1 } else { -1 }, if y < y2 { 1 } else { -1 });
-    let mut error = dx + dy;
-    loop {
-        put_dot(dots, owners, x, y, owner);
-        if x == x2 && y == y2 {
-            break;
-        }
-        let twice = 2 * error;
-        if twice >= dy {
-            error += dy;
-            x += sx;
-        }
-        if twice <= dx {
-            error += dx;
-            y += sy;
-        }
-    }
-}
-
-fn put_dot(
-    dots: &mut [Vec<u8>],
-    owners: &mut [Vec<Option<usize>>],
-    x: isize,
-    y: isize,
-    owner: usize,
-) {
-    if x < 0 || y < 0 {
-        return;
-    }
-    let (cell_x, cell_y) = (x as usize / 2, y as usize / 4);
-    const MASKS: [[u8; 2]; 4] = [[1, 8], [2, 16], [4, 32], [64, 128]];
-    if let Some(cell) = dots.get_mut(cell_y).and_then(|row| row.get_mut(cell_x)) {
-        *cell |= MASKS[y as usize % 4][x as usize % 2];
-        owners[cell_y][cell_x] = Some(owner);
-    }
 }
 
 fn braille_char(dots: u8) -> char {
@@ -366,17 +347,46 @@ mod tests {
                 x_max: None,
                 y_min: None,
                 y_max: None,
+                trim_output: true,
             },
         )
         .unwrap();
         assert!(output.contains("● up"));
         assert!(output.contains("● down"));
         assert!(output.contains('└'));
+        assert!(output.contains('┄'));
+        assert!(output.contains('┆'));
         assert!(
             output
                 .chars()
                 .any(|ch| ('\u{2801}'..='\u{28ff}').contains(&ch))
         );
+    }
+
+    #[test]
+    fn line_series_edges_do_not_cross_series_boundaries() {
+        let first = vec![DataPoint { x: 0.0, y: 0.0 }, DataPoint { x: 1.0, y: 1.0 }];
+        let second = vec![DataPoint { x: 0.0, y: 1.0 }, DataPoint { x: 1.0, y: 0.0 }];
+        let mut nodes = Vec::new();
+        let mut edges = Vec::new();
+        for (owner, series) in [first, second].into_iter().enumerate() {
+            let start = nodes.len();
+            nodes.extend(series.into_iter().map(|point| PlotNode {
+                position: Point {
+                    x: point.x,
+                    y: point.y,
+                },
+                label: None,
+                owner: Some(owner),
+            }));
+            edges.extend((start..start + 1).map(|from| PlotEdge {
+                from,
+                to: from + 1,
+                owner: Some(owner),
+            }));
+        }
+        assert_eq!((edges[0].from, edges[0].to), (0, 1));
+        assert_eq!((edges[1].from, edges[1].to), (2, 3));
     }
 
     #[test]

@@ -3,10 +3,11 @@
 mod layout;
 mod line;
 mod model;
+mod plane;
 mod render;
 
 pub use model::{DataPoint, Edge, Figure, Graph, LineFigure, LineSeries, Node};
-pub use render::{RenderOptions, render};
+pub use render::{RenderOptions, figure_bounds, render};
 
 /// Parse and validate a figure from tagged JSON.
 pub fn from_json(input: &str) -> anyhow::Result<Figure> {

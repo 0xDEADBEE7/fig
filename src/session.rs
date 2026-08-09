@@ -11,7 +11,7 @@ use crossterm::{
         LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
     },
 };
-use fig::{Figure, RenderOptions, render};
+use fig::{Figure, RenderOptions, figure_bounds, render};
 
 const PAN_FRACTION: f64 = 0.1;
 const ZOOM_IN: f64 = 0.8;
@@ -38,15 +38,23 @@ impl Axis {
 
     fn pan(&mut self, direction: f64) {
         let distance = (self.max - self.min) * PAN_FRACTION * direction;
-        self.min += distance;
-        self.max += distance;
+        let min = self.min + distance;
+        let max = self.max + distance;
+        if min.is_finite() && max.is_finite() && min < max {
+            self.min = min;
+            self.max = max;
+        }
     }
 
     fn zoom(&mut self, factor: f64) {
         let center = (self.min + self.max) / 2.0;
         let width = (self.max - self.min) * factor;
-        self.min = center - width / 2.0;
-        self.max = center + width / 2.0;
+        let min = center - width / 2.0;
+        let max = center + width / 2.0;
+        if min.is_finite() && max.is_finite() && min < max {
+            self.min = min;
+            self.max = max;
+        }
     }
 }
 
@@ -119,30 +127,16 @@ pub(crate) fn run(
         io::stdout().is_terminal(),
         "interactive mode requires a terminal on standard output"
     );
-    let Figure::Line(line) = figure else {
-        anyhow::bail!("interactive pan and zoom currently support line figures only");
-    };
-    let (data_min_x, data_max_x, data_min_y, data_max_y) =
-        line.series.iter().flat_map(|series| &series.points).fold(
-            (
-                f64::INFINITY,
-                f64::NEG_INFINITY,
-                f64::INFINITY,
-                f64::NEG_INFINITY,
-            ),
-            |(min_x, max_x, min_y, max_y), point| {
-                (
-                    min_x.min(point.x),
-                    max_x.max(point.x),
-                    min_y.min(point.y),
-                    max_y.max(point.y),
-                )
-            },
-        );
+    let (data_min_x, data_max_x, data_min_y, data_max_y) = figure_bounds(figure, 0);
     anyhow::ensure!(
-        data_min_x < data_max_x && data_min_y < data_max_y,
-        "interactive mode requires distinct x and y values"
+        data_min_x.is_finite()
+            && data_max_x.is_finite()
+            && data_min_y.is_finite()
+            && data_max_y.is_finite(),
+        "interactive mode requires finite figure bounds"
     );
+    let (data_min_x, data_max_x) = expand_axis(data_min_x, data_max_x);
+    let (data_min_y, data_max_y) = expand_axis(data_min_y, data_max_y);
     let mut viewport = Viewport::new(data_min_x, data_max_x, data_min_y, data_max_y, x_min, x_max)?;
     let _terminal = TerminalGuard::enter()?;
 
@@ -177,6 +171,14 @@ pub(crate) fn run(
     Ok(())
 }
 
+fn expand_axis(min: f64, max: f64) -> (f64, f64) {
+    if min < max {
+        return (min, max);
+    }
+    let padding = min.abs().max(1.0) * 0.05;
+    (min - padding, max + padding)
+}
+
 fn draw(
     figure: &Figure,
     viewport: Viewport,
@@ -204,6 +206,7 @@ fn draw(
             x_max: Some(viewport.x.max),
             y_min: Some(viewport.y.min),
             y_max: Some(viewport.y.max),
+            trim_output: false,
         },
     )?;
     let status = fit_text(
@@ -245,6 +248,18 @@ mod tests {
         viewport.y.zoom(ZOOM_IN);
         assert!(viewport.x.max - viewport.x.min > 100.0);
         assert!(viewport.y.max - viewport.y.min < 100.0);
+    }
+
+    #[test]
+    fn extreme_navigation_keeps_viewport_finite() {
+        let mut viewport = Viewport::new(-1.0, 1.0, -1.0, 1.0, None, None).unwrap();
+        for _ in 0..10_000 {
+            viewport.x.zoom(ZOOM_OUT);
+            viewport.x.pan(1.0);
+        }
+        assert!(viewport.x.min.is_finite());
+        assert!(viewport.x.max.is_finite());
+        assert!(viewport.x.min < viewport.x.max);
     }
 
     #[test]
