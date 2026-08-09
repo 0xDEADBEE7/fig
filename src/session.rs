@@ -1,0 +1,274 @@
+use std::io::{self, IsTerminal, Write};
+
+use anyhow::{Context, Result};
+use crossterm::{
+    cursor::{Hide, MoveTo, Show},
+    event::{self, Event, KeyCode, KeyEventKind},
+    execute, queue,
+    style::Print,
+    terminal::{
+        self, Clear, ClearType, DisableLineWrap, EnableLineWrap, EnterAlternateScreen,
+        LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    },
+};
+use fig::{Figure, RenderOptions, render};
+
+const PAN_FRACTION: f64 = 0.1;
+const ZOOM_IN: f64 = 0.8;
+const ZOOM_OUT: f64 = 1.25;
+
+#[derive(Debug, Clone, Copy)]
+struct Axis {
+    min: f64,
+    max: f64,
+}
+
+impl Axis {
+    fn new(
+        data_min: f64,
+        data_max: f64,
+        requested_min: Option<f64>,
+        requested_max: Option<f64>,
+    ) -> Result<Self> {
+        let min = requested_min.unwrap_or(data_min);
+        let max = requested_max.unwrap_or(data_max);
+        anyhow::ensure!(min < max, "viewport minimum must be less than maximum");
+        Ok(Self { min, max })
+    }
+
+    fn pan(&mut self, direction: f64) {
+        let distance = (self.max - self.min) * PAN_FRACTION * direction;
+        self.min += distance;
+        self.max += distance;
+    }
+
+    fn zoom(&mut self, factor: f64) {
+        let center = (self.min + self.max) / 2.0;
+        let width = (self.max - self.min) * factor;
+        self.min = center - width / 2.0;
+        self.max = center + width / 2.0;
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Viewport {
+    x: Axis,
+    y: Axis,
+}
+
+impl Viewport {
+    fn new(
+        data_min_x: f64,
+        data_max_x: f64,
+        data_min_y: f64,
+        data_max_y: f64,
+        requested_min_x: Option<f64>,
+        requested_max_x: Option<f64>,
+    ) -> Result<Self> {
+        Ok(Self {
+            x: Axis::new(data_min_x, data_max_x, requested_min_x, requested_max_x)?,
+            y: Axis::new(data_min_y, data_max_y, None, None)?,
+        })
+    }
+
+    fn reset(&mut self, data_min_x: f64, data_max_x: f64, data_min_y: f64, data_max_y: f64) {
+        self.x = Axis {
+            min: data_min_x,
+            max: data_max_x,
+        };
+        self.y = Axis {
+            min: data_min_y,
+            max: data_max_y,
+        };
+    }
+}
+
+struct TerminalGuard;
+
+impl TerminalGuard {
+    fn enter() -> Result<Self> {
+        enable_raw_mode().context("failed to enable terminal raw mode")?;
+        if let Err(error) = execute!(io::stdout(), EnterAlternateScreen, DisableLineWrap, Hide) {
+            let _ = disable_raw_mode();
+            return Err(error).context("failed to enter alternate screen");
+        }
+        Ok(Self)
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = execute!(io::stdout(), Show, EnableLineWrap, LeaveAlternateScreen);
+        let _ = disable_raw_mode();
+    }
+}
+
+pub(crate) fn run(
+    figure: &Figure,
+    x_min: Option<f64>,
+    x_max: Option<f64>,
+    max_width: usize,
+    max_height: usize,
+    color: bool,
+) -> Result<()> {
+    anyhow::ensure!(
+        io::stdin().is_terminal(),
+        "interactive mode requires a terminal on standard input"
+    );
+    anyhow::ensure!(
+        io::stdout().is_terminal(),
+        "interactive mode requires a terminal on standard output"
+    );
+    let Figure::Line(line) = figure else {
+        anyhow::bail!("interactive pan and zoom currently support line figures only");
+    };
+    let (data_min_x, data_max_x, data_min_y, data_max_y) =
+        line.series.iter().flat_map(|series| &series.points).fold(
+            (
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+                f64::INFINITY,
+                f64::NEG_INFINITY,
+            ),
+            |(min_x, max_x, min_y, max_y), point| {
+                (
+                    min_x.min(point.x),
+                    max_x.max(point.x),
+                    min_y.min(point.y),
+                    max_y.max(point.y),
+                )
+            },
+        );
+    anyhow::ensure!(
+        data_min_x < data_max_x && data_min_y < data_max_y,
+        "interactive mode requires distinct x and y values"
+    );
+    let mut viewport = Viewport::new(data_min_x, data_max_x, data_min_y, data_max_y, x_min, x_max)?;
+    let _terminal = TerminalGuard::enter()?;
+
+    loop {
+        draw(figure, viewport, max_width, max_height, color)?;
+        match event::read().context("failed to read terminal event")? {
+            Event::Key(key) if matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) => {
+                match key.code {
+                    KeyCode::Char('q') | KeyCode::Esc => break,
+                    KeyCode::Left | KeyCode::Char('h') => viewport.x.pan(-1.0),
+                    KeyCode::Right | KeyCode::Char('l') => viewport.x.pan(1.0),
+                    KeyCode::Down | KeyCode::Char('j') => viewport.y.pan(-1.0),
+                    KeyCode::Up | KeyCode::Char('k') => viewport.y.pan(1.0),
+                    KeyCode::Char('K') => {
+                        viewport.x.zoom(ZOOM_IN);
+                        viewport.y.zoom(ZOOM_IN);
+                    }
+                    KeyCode::Char('J') => {
+                        viewport.x.zoom(ZOOM_OUT);
+                        viewport.y.zoom(ZOOM_OUT);
+                    }
+                    KeyCode::Char('r') => {
+                        viewport.reset(data_min_x, data_max_x, data_min_y, data_max_y)
+                    }
+                    _ => continue,
+                }
+            }
+            Event::Resize(_, _) => continue,
+            _ => continue,
+        }
+    }
+    Ok(())
+}
+
+fn draw(
+    figure: &Figure,
+    viewport: Viewport,
+    max_width: usize,
+    max_height: usize,
+    color: bool,
+) -> Result<()> {
+    let (terminal_width, terminal_height) =
+        terminal::size().context("failed to read terminal size")?;
+    let width = usize::from(terminal_width).min(max_width);
+    let session_height = usize::from(terminal_height).min(max_height);
+    anyhow::ensure!(
+        width >= 30 && session_height >= 11,
+        "interactive canvas must be at least 30x11 (increase --width/--height or the terminal size)"
+    );
+    let figure_height = session_height - 1;
+    let output = render(
+        figure,
+        RenderOptions {
+            width,
+            height: figure_height,
+            iterations: 0,
+            color,
+            x_min: Some(viewport.x.min),
+            x_max: Some(viewport.x.max),
+            y_min: Some(viewport.y.min),
+            y_max: Some(viewport.y.max),
+        },
+    )?;
+    let status = fit_text(
+        &format!(
+            "h/l pan x  j/k pan y  J/K zoom out/in  r reset  q quit   x: {:.4} .. {:.4}  y: {:.4} .. {:.4}",
+            viewport.x.min, viewport.x.max, viewport.y.min, viewport.y.max
+        ),
+        width,
+    );
+    let frame = output.replace('\n', "\r\n");
+    let mut stdout = io::stdout();
+    queue!(
+        stdout,
+        MoveTo(0, 0),
+        Clear(ClearType::All),
+        Print(frame),
+        MoveTo(0, (session_height - 1) as u16),
+        Print(status)
+    )?;
+    stdout.flush().context("failed to redraw terminal")
+}
+
+fn fit_text(text: &str, width: usize) -> String {
+    text.chars().take(width).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pan_and_zoom_are_unbounded() {
+        let mut viewport = Viewport::new(0.0, 100.0, 0.0, 100.0, None, None).unwrap();
+        viewport.x.pan(-1.0);
+        viewport.y.pan(-1.0);
+        assert!(viewport.x.min < 0.0);
+        assert!(viewport.y.min < 0.0);
+        viewport.x.zoom(ZOOM_OUT);
+        viewport.y.zoom(ZOOM_IN);
+        assert!(viewport.x.max - viewport.x.min > 100.0);
+        assert!(viewport.y.max - viewport.y.min < 100.0);
+    }
+
+    #[test]
+    fn reset_restores_data_bounds() {
+        let mut viewport = Viewport::new(0.0, 100.0, 0.0, 100.0, Some(20.0), Some(60.0)).unwrap();
+        viewport.x.pan(1.0);
+        viewport.y.pan(-1.0);
+        viewport.reset(0.0, 100.0, 0.0, 100.0);
+        assert_eq!((viewport.x.min, viewport.x.max), (0.0, 100.0));
+        assert_eq!((viewport.y.min, viewport.y.max), (0.0, 100.0));
+    }
+
+    #[test]
+    fn frame_lines_return_to_the_left_margin() {
+        assert_eq!(frame_text("one\ntwo\nthree"), "one\r\ntwo\r\nthree");
+    }
+
+    fn frame_text(output: &str) -> String {
+        output.replace('\n', "\r\n")
+    }
+
+    #[test]
+    fn status_text_never_exceeds_the_canvas() {
+        assert_eq!(fit_text("abcdefgh", 5), "abcde");
+        assert_eq!(fit_text("abc", 5), "abc");
+    }
+}

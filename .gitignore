@@ -1,0 +1,18 @@
+# Rust build artifacts
+/target/
+
+# Generated local data
+.local/
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Emacs temporary and lock files
+*~
+\#*\#
+.#*
