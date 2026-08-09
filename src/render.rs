@@ -13,12 +13,13 @@ pub struct RenderOptions {
     pub iterations: usize,
     /// Emit ANSI colors for figure types that support them.
     pub color: bool,
-    /// Optional x-axis viewport bounds.
     pub x_min: Option<f64>,
     pub x_max: Option<f64>,
     /// Optional y-axis viewport bounds.
     pub y_min: Option<f64>,
     pub y_max: Option<f64>,
+    /// Keep the full raster canvas instead of removing empty outer rows.
+    pub trim_output: bool,
 }
 
 impl Default for RenderOptions {
@@ -32,6 +33,7 @@ impl Default for RenderOptions {
             x_max: None,
             y_min: None,
             y_max: None,
+            trim_output: true,
         }
     }
 }
@@ -151,6 +153,9 @@ fn render_graph(graph: &Graph, options: RenderOptions) -> anyhow::Result<String>
         .into_iter()
         .map(|row| row.into_iter().collect::<String>().trim_end().to_owned())
         .collect();
+    if !options.trim_output {
+        return Ok(lines.join("\n"));
+    }
     let first = lines.iter().position(|line| !line.is_empty()).unwrap_or(0);
     let last = lines
         .iter()
@@ -235,6 +240,7 @@ mod tests {
                 x_max: None,
                 y_min: None,
                 y_max: None,
+                trim_output: true,
             },
         )
         .unwrap();
@@ -245,6 +251,34 @@ mod tests {
                 .chars()
                 .any(|character| ('\u{2801}'..='\u{28ff}').contains(&character))
         );
+    }
+
+    #[test]
+    fn preserves_empty_rows_for_interactive_viewport() {
+        let graph = Graph {
+            nodes: vec![Node {
+                id: "center".into(),
+                label: None,
+            }],
+            edges: vec![],
+        };
+        let output = render(
+            &Figure::Graph(graph),
+            RenderOptions {
+                width: 30,
+                height: 11,
+                iterations: 0,
+                color: false,
+                x_min: None,
+                x_max: None,
+                y_min: Some(-10.0),
+                y_max: Some(10.0),
+                trim_output: false,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(output.split('\n').count(), 11);
     }
 
     #[test]

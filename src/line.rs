@@ -347,6 +347,7 @@ mod tests {
                 x_max: None,
                 y_min: None,
                 y_max: None,
+                trim_output: true,
             },
         )
         .unwrap();

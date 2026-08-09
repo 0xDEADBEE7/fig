@@ -206,6 +206,7 @@ fn draw(
             x_max: Some(viewport.x.max),
             y_min: Some(viewport.y.min),
             y_max: Some(viewport.y.max),
+            trim_output: false,
         },
     )?;
     let status = fit_text(

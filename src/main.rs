@@ -87,6 +87,7 @@ fn main() -> Result<()> {
                 x_max: cli.x_max,
                 y_min: None,
                 y_max: None,
+                trim_output: true,
             }
         )?
     );
