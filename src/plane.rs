@@ -161,7 +161,7 @@ impl Plot {
             .iter()
             .map(|node| {
                 let pixel = viewport.project(node.position, width, height);
-                put_dot(&mut dots, &mut owners, pixel, node.owner);
+                put_node(&mut dots, &mut owners, pixel, node.owner);
                 (pixel, node.label.as_deref())
             })
             .collect();
@@ -253,6 +253,25 @@ fn draw_line(
     }
 }
 
+fn put_node(
+    canvas: &mut [Vec<u8>],
+    owners: &mut [Vec<Option<usize>>],
+    pixel: Pixel,
+    owner: Option<usize>,
+) {
+    let x = (pixel.x * 2.0).round() as isize;
+    let y = (pixel.y * 4.0).round() as isize;
+    if x < 0 || y < 0 {
+        return;
+    }
+    let cell_x = x as usize / 2;
+    let cell_y = y as usize / 4;
+    if let Some(cell) = canvas.get_mut(cell_y).and_then(|row| row.get_mut(cell_x)) {
+        *cell |= 0b0011_0110;
+        owners[cell_y][cell_x] = owner.or(owners[cell_y][cell_x]);
+    }
+}
+
 fn put_dot(
     canvas: &mut [Vec<u8>],
     owners: &mut [Vec<Option<usize>>],
@@ -261,6 +280,16 @@ fn put_dot(
 ) {
     let x = (pixel.x * 2.0).round() as isize;
     let y = (pixel.y * 4.0).round() as isize;
+    put_micro_dot(canvas, owners, x, y, owner);
+}
+
+fn put_micro_dot(
+    canvas: &mut [Vec<u8>],
+    owners: &mut [Vec<Option<usize>>],
+    x: isize,
+    y: isize,
+    owner: Option<usize>,
+) {
     if x < 0 || y < 0 {
         return;
     }
@@ -272,6 +301,7 @@ fn put_dot(
         owners[cell_y][cell_x] = owner.or(owners[cell_y][cell_x]);
     }
 }
+
 fn clip_line(
     x0: f64,
     y0: f64,
@@ -368,7 +398,7 @@ mod tests {
         };
         let bounds = plot.bounds().padded();
         let (dots, owners, nodes) = plot.pixels(Viewport::plot(bounds), 20, 10);
-        assert!(dots.iter().flatten().any(|dots| *dots != 0));
+        assert!(dots.iter().flatten().any(|dots| *dots == 0b0011_0110));
         assert!(owners.iter().flatten().any(|owner| *owner == Some(2)));
         assert_eq!(nodes.len(), 2);
         assert_eq!(nodes[0].1, Some("a"));

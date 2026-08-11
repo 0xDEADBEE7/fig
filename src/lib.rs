@@ -1,12 +1,16 @@
 //! Terminal-friendly figures rendered from JSON.
 
+mod histogram;
 mod layout;
 mod line;
 mod model;
 mod plane;
 mod render;
 
-pub use model::{DataPoint, Edge, Figure, Graph, LineFigure, LineSeries, Node};
+pub use model::{
+    DataPoint, Edge, Figure, Graph, HistogramBucket, HistogramFigure, HistogramSeries, LineFigure,
+    LineSeries, Node,
+};
 pub use render::{RenderOptions, figure_bounds, render};
 
 /// Parse and validate a figure from tagged JSON.
@@ -28,6 +32,14 @@ mod tests {
         assert!(matches!(figure, Figure::Line(_)));
     }
 
+    #[test]
+    fn parses_tagged_histogram_figure() {
+        let figure = from_json(
+            r#"{"type":"histogram","series":[{"label":"ok"}],"buckets":[{"label":"0","values":{"ok":2}}]}"#,
+        )
+        .unwrap();
+        assert!(matches!(figure, Figure::Histogram(_)));
+    }
     #[test]
     fn requires_a_figure_type() {
         let error = from_json(r#"{"nodes":[],"edges":[]}"#).unwrap_err();

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{Result, bail};
 use serde::Deserialize;
@@ -8,6 +8,7 @@ use serde::Deserialize;
 pub enum Figure {
     Graph(Graph),
     Line(LineFigure),
+    Histogram(HistogramFigure),
 }
 
 impl Figure {
@@ -15,10 +16,74 @@ impl Figure {
         match self {
             Self::Graph(graph) => graph.validate(),
             Self::Line(line) => line.validate(),
+            Self::Histogram(histogram) => histogram.validate(),
         }
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HistogramFigure {
+    pub series: Vec<HistogramSeries>,
+    pub buckets: Vec<HistogramBucket>,
+    #[serde(default)]
+    pub x_label: Option<String>,
+    #[serde(default)]
+    pub y_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HistogramSeries {
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HistogramBucket {
+    pub label: String,
+    #[serde(default)]
+    pub values: HashMap<String, f64>,
+}
+
+impl HistogramFigure {
+    pub fn validate(&self) -> Result<()> {
+        if self.series.is_empty() {
+            bail!("a histogram must contain at least one series");
+        }
+        if self.buckets.is_empty() {
+            bail!("a histogram must contain at least one bucket");
+        }
+        let mut labels = HashSet::new();
+        for series in &self.series {
+            if series.label.trim().is_empty() || !labels.insert(series.label.as_str()) {
+                bail!("histogram series labels must be non-empty and unique");
+            }
+        }
+        for bucket in &self.buckets {
+            if bucket.label.trim().is_empty() {
+                bail!("histogram bucket labels cannot be empty");
+            }
+            for (label, value) in &bucket.values {
+                if !labels.contains(label.as_str()) {
+                    bail!(
+                        "histogram bucket {:?} references unknown series {:?}",
+                        bucket.label,
+                        label
+                    );
+                }
+                if !value.is_finite() || *value < 0.0 {
+                    bail!(
+                        "histogram value {:?} in bucket {:?} must be finite and non-negative",
+                        value,
+                        bucket.label
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+}
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LineFigure {

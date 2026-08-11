@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    Figure, Graph,
+    Figure, Graph, HistogramFigure,
     layout::{Point, force_directed},
     plane::{Bounds, Pixel, Plot, PlotEdge, PlotNode, Viewport},
 };
@@ -18,6 +18,8 @@ pub struct RenderOptions {
     /// Optional y-axis viewport bounds.
     pub y_min: Option<f64>,
     pub y_max: Option<f64>,
+    /// Selected histogram bucket, rendered in the data table and below the plot.
+    pub selected_index: Option<usize>,
     /// Keep the full raster canvas instead of removing empty outer rows.
     pub trim_output: bool,
 }
@@ -33,6 +35,7 @@ impl Default for RenderOptions {
             x_max: None,
             y_min: None,
             y_max: None,
+            selected_index: None,
             trim_output: true,
         }
     }
@@ -57,9 +60,23 @@ pub fn figure_bounds(figure: &Figure, iterations: usize) -> (f64, f64, f64, f64)
                 )
             },
         ),
+        Figure::Histogram(histogram) => histogram_bounds(histogram),
     }
 }
 
+fn histogram_bounds(figure: &HistogramFigure) -> (f64, f64, f64, f64) {
+    let max_y = figure
+        .buckets
+        .iter()
+        .map(|bucket| bucket.values.values().sum::<f64>())
+        .fold(0.0, f64::max);
+    (
+        0.0,
+        (figure.buckets.len().saturating_sub(1)) as f64,
+        0.0,
+        max_y,
+    )
+}
 fn bounds(points: &[Point]) -> (f64, f64, f64, f64) {
     points.iter().fold(
         (
@@ -84,6 +101,7 @@ pub fn render(figure: &Figure, options: RenderOptions) -> anyhow::Result<String>
     match figure {
         Figure::Graph(graph) => render_graph(graph, options),
         Figure::Line(line) => crate::line::render_line(line, options),
+        Figure::Histogram(histogram) => crate::histogram::render_histogram(histogram, options),
     }
 }
 
@@ -108,7 +126,7 @@ fn render_graph(graph: &Graph, options: RenderOptions) -> anyhow::Result<String>
             .map(|(node, position)| PlotNode {
                 position: *position,
                 label: Some(node.display_label().to_owned()),
-                owner: None,
+                owner: Some(0),
             })
             .collect(),
         edges: graph
@@ -133,7 +151,7 @@ fn render_graph(graph: &Graph, options: RenderOptions) -> anyhow::Result<String>
         view_bounds.min_x < view_bounds.max_x && view_bounds.min_y < view_bounds.max_y,
         "graph viewport contains no range"
     );
-    let (dots, _owners, projected_nodes) = plot.pixels(
+    let (dots, mut owners, projected_nodes) = plot.pixels(
         Viewport::with_aspect(view_bounds),
         options.width,
         options.height,
@@ -147,11 +165,32 @@ fn render_graph(graph: &Graph, options: RenderOptions) -> anyhow::Result<String>
         })
         .collect();
     for (position, label) in projected_nodes {
-        draw_label(&mut canvas, position, label.unwrap_or_default());
+        draw_label(
+            &mut canvas,
+            &mut owners,
+            position,
+            label.unwrap_or_default(),
+        );
     }
     let lines: Vec<String> = canvas
         .into_iter()
-        .map(|row| row.into_iter().collect::<String>().trim_end().to_owned())
+        .enumerate()
+        .map(|(y, row)| {
+            let mut line = String::new();
+            let mut red = false;
+            for (x, ch) in row.into_iter().enumerate() {
+                let is_red = owners[y][x].is_some() && ch != ' ';
+                if options.color && is_red != red {
+                    line.push_str(if is_red { "\x1b[38;5;196m" } else { "\x1b[0m" });
+                    red = is_red;
+                }
+                line.push(ch);
+            }
+            if options.color && red {
+                line.push_str("\x1b[0m");
+            }
+            line.trim_end().to_owned()
+        })
         .collect();
     if !options.trim_output {
         return Ok(lines.join("\n"));
@@ -187,15 +226,20 @@ fn braille_char(dots: u8) -> char {
     char::from_u32(0x2800 + u32::from(dots)).expect("Braille code points are valid")
 }
 
-fn draw_label(canvas: &mut [Vec<char>], position: Pixel, label: &str) {
+fn draw_label(
+    canvas: &mut [Vec<char>],
+    owners: &mut [Vec<Option<usize>>],
+    position: Pixel,
+    label: &str,
+) {
     let clean: String = label
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect();
     let text = format!("[{clean}]");
     let width = canvas.first().map_or(0, Vec::len);
-    let y = position.y.round();
-    if position.x < 0.0 || position.x >= width as f64 || y < 0.0 || y >= canvas.len() as f64 {
+    let y = position.y.round() as isize + 1;
+    if position.x < 0.0 || position.x >= width as f64 || y < 0 || y >= canvas.len() as isize {
         return;
     }
     let start = (position.x.round() as isize - text.chars().count() as isize / 2)
@@ -203,6 +247,7 @@ fn draw_label(canvas: &mut [Vec<char>], position: Pixel, label: &str) {
     let y = y as usize;
     for (offset, ch) in text.chars().take(width).enumerate() {
         canvas[y][start + offset] = ch;
+        owners[y][start + offset] = None;
     }
 }
 
@@ -240,6 +285,7 @@ mod tests {
                 x_max: None,
                 y_min: None,
                 y_max: None,
+                selected_index: None,
                 trim_output: true,
             },
         )
@@ -273,6 +319,7 @@ mod tests {
                 x_max: None,
                 y_min: Some(-10.0),
                 y_max: Some(10.0),
+                selected_index: None,
                 trim_output: false,
             },
         )
@@ -292,7 +339,12 @@ mod tests {
     fn graph_label_is_skipped_when_rounded_row_is_outside_canvas() {
         let mut canvas = vec![vec![' '; 80]; 19];
 
-        draw_label(&mut canvas, Pixel { x: 40.0, y: 18.6 }, "Worker");
+        draw_label(
+            &mut canvas,
+            &mut vec![vec![None; 80]; 19],
+            Pixel { x: 40.0, y: 17.6 },
+            "Worker",
+        );
 
         assert!(canvas.iter().flatten().all(|cell| *cell == ' '));
     }

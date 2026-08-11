@@ -138,16 +138,29 @@ pub(crate) fn run(
     let (data_min_x, data_max_x) = expand_axis(data_min_x, data_max_x);
     let (data_min_y, data_max_y) = expand_axis(data_min_y, data_max_y);
     let mut viewport = Viewport::new(data_min_x, data_max_x, data_min_y, data_max_y, x_min, x_max)?;
+    let mut selected = 0usize;
     let _terminal = TerminalGuard::enter()?;
 
     loop {
-        draw(figure, viewport, max_width, max_height, color)?;
+        draw(figure, viewport, max_width, max_height, color, selected)?;
         match event::read().context("failed to read terminal event")? {
             Event::Key(key) if matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) => {
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
-                    KeyCode::Left | KeyCode::Char('h') => viewport.x.pan(-1.0),
-                    KeyCode::Right | KeyCode::Char('l') => viewport.x.pan(1.0),
+                    KeyCode::Left | KeyCode::Char('h') => {
+                        if let Figure::Histogram(histogram) = figure {
+                            selected = selected.saturating_sub(1).min(histogram.buckets.len() - 1);
+                        } else {
+                            viewport.x.pan(-1.0);
+                        }
+                    }
+                    KeyCode::Right | KeyCode::Char('l') => {
+                        if let Figure::Histogram(histogram) = figure {
+                            selected = (selected + 1).min(histogram.buckets.len() - 1);
+                        } else {
+                            viewport.x.pan(1.0);
+                        }
+                    }
                     KeyCode::Down | KeyCode::Char('j') => viewport.y.pan(-1.0),
                     KeyCode::Up | KeyCode::Char('k') => viewport.y.pan(1.0),
                     KeyCode::Char('K') => {
@@ -159,7 +172,8 @@ pub(crate) fn run(
                         viewport.y.zoom(ZOOM_OUT);
                     }
                     KeyCode::Char('r') => {
-                        viewport.reset(data_min_x, data_max_x, data_min_y, data_max_y)
+                        viewport.reset(data_min_x, data_max_x, data_min_y, data_max_y);
+                        selected = 0;
                     }
                     _ => continue,
                 }
@@ -185,6 +199,7 @@ fn draw(
     max_width: usize,
     max_height: usize,
     color: bool,
+    selected: usize,
 ) -> Result<()> {
     let (terminal_width, terminal_height) =
         terminal::size().context("failed to read terminal size")?;
@@ -206,16 +221,25 @@ fn draw(
             x_max: Some(viewport.x.max),
             y_min: Some(viewport.y.min),
             y_max: Some(viewport.y.max),
+            selected_index: Some(selected),
             trim_output: false,
         },
     )?;
-    let status = fit_text(
-        &format!(
+    let status = match figure {
+        Figure::Histogram(histogram) => format!(
+            "h/l select  j/k pan y  J/K zoom out/in  r reset  q quit   bucket: {}/{} ({})  y: {:.4} .. {:.4}",
+            selected + 1,
+            histogram.buckets.len(),
+            histogram.buckets[selected].label,
+            viewport.y.min,
+            viewport.y.max
+        ),
+        _ => format!(
             "h/l pan x  j/k pan y  J/K zoom out/in  r reset  q quit   x: {:.4} .. {:.4}  y: {:.4} .. {:.4}",
             viewport.x.min, viewport.x.max, viewport.y.min, viewport.y.max
         ),
-        width,
-    );
+    };
+    let status = fit_text(&status, width);
     let frame = output.replace('\n', "\r\n");
     let mut stdout = io::stdout();
     queue!(

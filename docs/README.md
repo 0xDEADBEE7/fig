@@ -1,7 +1,7 @@
 # fig
 
 `fig` renders structured JSON figures as terminal-friendly Unicode graphics.
-It currently supports force-directed network graphs and multi-series line charts.
+It currently supports force-directed network graphs, multi-series line charts, and stacked histograms.
 
 ## Usage
 
@@ -68,6 +68,32 @@ python3 examples/generate_sine.py | cargo run -- - --width 80
 python3 examples/generate_sine.py | cargo run -- - --x-min 6 --x-max 12
 ```
 
+### Histogram
+
+Histograms use ordered buckets and explicitly declared stacked series. Missing values
+are treated as zero; bucket labels determine left-to-right order and series order
+determines bottom-to-top stack and legend order.
+
+```json
+{
+  "type": "histogram",
+  "x_label": "Latency",
+  "y_label": "Count",
+  "series": [
+    { "label": "success" },
+    { "label": "failure" }
+  ],
+  "buckets": [
+    { "label": "0–10 ms", "values": { "success": 42, "failure": 3 } },
+    { "label": "10–25 ms", "values": { "success": 67 } }
+  ]
+}
+```
+
+Histogram values must be finite and non-negative. Values use the series labels as
+keys; unknown labels, duplicate series labels, empty buckets, and empty series are
+rejected.
+
 ## Interactive figures
 
 Start a redraw-in-place session with any supported JSON figure (interactive mode needs standard input for keyboard events):
@@ -78,11 +104,12 @@ cargo run -- /tmp/sine.json --interactive
 cargo run -- /tmp/sine.json --interactive --width 60 --height 18
 ```
 
-Use `h`/`l` to pan left/right, `j`/`k` to pan down/up, `J`/`K` to zoom out/in,
-`r` to reset, and `q` or Escape to quit. Panning is intentionally unbounded: the
-viewport may move beyond the data and show blank space, with data clipped at the
-viewport edges. The session uses the terminal's alternate screen and redraws after
-key and resize events, leaving normal scrollback intact.
+Use `h`/`l` to pan left/right, `j`/`k` to pan down/up, `J`/`K` to zoom out/in, `r` to reset, and `q` or Escape to quit. On histograms, `h`/`l` select
+the previous/next bucket instead; the selected bucket stays visible and its values
+appear in the data table. Panning is intentionally unbounded: the viewport may move
+beyond the data and show blank space, with data clipped at the viewport edges. The
+session uses the terminal's alternate screen and redraws after key and resize events,
+leaving normal scrollback intact.
 In interactive mode, `--width` and `--height` are hard maximums for the entire
 session; the canvas also shrinks if the terminal is smaller. Line wrapping is
 disabled while the session runs so neither the figure nor status row can scroll
