@@ -2,11 +2,7 @@
 name = "fig"
 version = "0.1.0"
 edition = "2024"
-description = "Render JSON figures as terminal-friendly text"
-license = "MIT"
-
-[lib]
-name = "fig"
+description = "Interactive braille graph viewer"
 
 [[bin]]
 name = "fig"
