@@ -1,0 +1,14 @@
+{
+  "type": "graph",
+  "nodes": [
+    { "id": "api", "label": "API", "metadata": { "port": 8080 } },
+    { "id": "worker", "label": "Worker", "metadata": { "queue": "jobs" } },
+    { "id": "database", "label": "Database", "metadata": { "engine": "Postgres" } },
+    { "id": "cache", "label": "Cache", "metadata": { "engine": "Redis" } }
+  ],
+  "edges": [
+    { "from": "api", "to": "worker" },
+    { "from": "api", "to": "database" },
+    { "from": "worker", "to": "cache" }
+  ]
+}
