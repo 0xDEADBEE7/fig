@@ -1,4 +1,6 @@
-use super::*;
+use fig::figure::Plane;
+use fig::figure::line::render::*;
+use fig::models::Series;
 
 #[test]
 fn dimmed_series_emits_terminal_controls_not_literal_escapes() {

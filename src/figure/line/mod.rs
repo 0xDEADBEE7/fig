@@ -1,5 +1,5 @@
 mod info;
-mod render;
+pub mod render;
 
 use crate::figure::{Plane, Visualization};
 use crate::models::{Line, Point};

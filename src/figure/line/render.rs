@@ -39,16 +39,40 @@ pub fn draw(
     let inner_height = height.saturating_sub(2);
     let mut canvas = background(plane, inner_width, inner_height);
 
-    for (index, points) in points.iter().enumerate() {
-        let tone = if focus.is_some_and(|selected| selected != index) {
-            Tone::Dim
-        } else {
-            Tone::Normal
-        };
-        draw_series(&mut canvas, points, tone);
+    match focus {
+        Some(selected) => {
+            for (index, points) in points.iter().enumerate() {
+                if index != selected {
+                    draw_series(&mut canvas, points, Tone::Dim);
+                }
+            }
+            if let Some(points) = points.get(selected) {
+                redraw_focused_series(&mut canvas, points);
+            }
+        }
+        None => {
+            for points in points {
+                draw_series(&mut canvas, points, Tone::Normal);
+            }
+        }
     }
     draw_legend(&mut canvas, series, focus, labels);
     frame(canvas, width)
+}
+
+fn redraw_focused_series(canvas: &mut [Vec<Cell>], points: &[(isize, isize)]) {
+    let width = canvas.first().map_or(0, Vec::len);
+    let mut focused = vec![vec![Cell::default(); width]; canvas.len()];
+    draw_series(&mut focused, points, Tone::Normal);
+    for (canvas_row, focused_row) in canvas.iter_mut().zip(focused) {
+        for (cell, focused_cell) in canvas_row.iter_mut().zip(focused_row) {
+            if focused_cell.dots != 0 {
+                cell.dots = focused_cell.dots;
+                cell.text = None;
+                cell.tone = Tone::Normal;
+            }
+        }
+    }
 }
 
 fn background(plane: Plane, width: usize, height: usize) -> Vec<Vec<Cell>> {
@@ -71,6 +95,20 @@ fn draw_series(canvas: &mut [Vec<Cell>], points: &[(isize, isize)], tone: Tone) 
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn focused_line_replaces_other_lines_at_an_overlap() {
+        let mut canvas = background(Plane::new(false, false), 2, 1);
+        draw_series(&mut canvas, &[(0, 0), (3, 3)], Tone::Dim);
+        redraw_focused_series(&mut canvas, &[(0, 3), (3, 0)]);
+
+        assert_eq!(canvas[0][0].dots, 96);
+        assert_eq!(canvas[0][0].tone, Tone::Normal);
+    }
+}
 fn raster_line(canvas: &mut [Vec<Cell>], from: (isize, isize), to: (isize, isize), tone: Tone) {
     let Some((from, to)) = clip(from, to, canvas) else {
         return;
@@ -220,7 +258,3 @@ fn push_toned(line: &mut String, character: char, tone: Tone) {
         Tone::Dim => line.push_str(&format!("\x1b[38;5;240m{character}\x1b[0m")),
     }
 }
-
-#[cfg(test)]
-#[path = "render_tests.rs"]
-mod tests;

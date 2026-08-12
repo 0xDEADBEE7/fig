@@ -1,5 +1,5 @@
-use super::layout::force_directed;
-use crate::models::{Edge, Graph, Node};
+use fig::figure::graph::layout::force_directed;
+use fig::models::{Edge, Graph, Node};
 use serde_json::Value;
 use std::ops::Range;
 

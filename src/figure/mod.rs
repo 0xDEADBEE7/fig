@@ -1,4 +1,10 @@
+#[cfg(feature = "test-support")]
+pub mod graph;
+#[cfg(not(feature = "test-support"))]
 mod graph;
+#[cfg(feature = "test-support")]
+pub mod line;
+#[cfg(not(feature = "test-support"))]
 mod line;
 mod plane;
 
