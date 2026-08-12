@@ -26,6 +26,7 @@ struct State {
     focus: Option<usize>,
     search: Option<String>,
     help: bool,
+    labels: bool,
 }
 
 pub fn run(figure: Figure, max_width: u16, max_height: u16) -> anyhow::Result<()> {
@@ -37,6 +38,7 @@ pub fn run(figure: Figure, max_width: u16, max_height: u16) -> anyhow::Result<()
         focus: None,
         search: None,
         help: false,
+        labels: true,
     };
     let _terminal = Terminal::enter()?;
     loop {
@@ -114,6 +116,7 @@ fn dispatch(action: Action, state: &mut State, visualization: &dyn figure::Visua
         },
         Action::Search => state.search = Some(String::new()),
         Action::Help => state.help = true,
+        Action::ToggleLabels => state.labels = !state.labels,
         Action::Reset => {
             state.plane = visualization.default_plane();
             state.focus = None;
@@ -148,7 +151,9 @@ fn draw(
     let height = usize::from(terminal_height.min(max_height));
     anyhow::ensure!(width >= 30 && height >= 8, "terminal must be at least 30x8");
     let mut lines = match state.screen {
-        Screen::Visualisation => visualization.draw(width, height - 1, state.focus, state.plane),
+        Screen::Visualisation => {
+            visualization.draw(width, height - 1, state.focus, state.plane, state.labels)
+        }
         Screen::Information => visualization.information(state.focus, width, height - 1),
     };
     lines.push(status(state, visualization));
@@ -171,7 +176,10 @@ fn status(state: &State, visualization: &dyn figure::Visualization) -> String {
         return format!("search: {query}{match_label}");
     }
     match state.screen {
-        Screen::Visualisation => "visualisation  Enter info  ? help".to_owned(),
+        Screen::Visualisation => format!(
+            "visualisation  labels: {}  Enter info  ? help",
+            if state.labels { "on" } else { "off" }
+        ),
         Screen::Information => "information  b/q/x back".to_owned(),
     }
 }

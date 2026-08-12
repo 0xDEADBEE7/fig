@@ -1,5 +1,7 @@
 mod info;
 mod layout;
+#[cfg(test)]
+mod layout_tests;
 mod render;
 
 use crate::models::Graph;
@@ -25,8 +27,23 @@ impl Visualization for GraphView<'_> {
         Plane::new(false, false)
     }
 
-    fn draw(&self, width: usize, height: usize, focus: Option<usize>, plane: Plane) -> Vec<String> {
-        render::draw(self.graph, &self.points, width, height, focus, plane)
+    fn draw(
+        &self,
+        width: usize,
+        height: usize,
+        focus: Option<usize>,
+        plane: Plane,
+        labels: bool,
+    ) -> Vec<String> {
+        render::draw(
+            self.graph,
+            &self.points,
+            width,
+            height,
+            focus,
+            plane,
+            labels,
+        )
     }
 
     fn information(&self, focus: Option<usize>, width: usize, height: usize) -> Vec<String> {

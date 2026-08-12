@@ -25,5 +25,5 @@ Interactive sessions need an input file so standard input remains available for
 keyboard events.
 
 Controls: `h/j/k/l` pan, `J/K` zoom, `H/L` previous/next node, `Enter` open
-information, `b`, `q`, or `x` back (or quit from an unfocused visualisation),
-`/` search, `?` help, and `r` reset.
+information, `Shift-Tab` toggle labels, `b`, `q`, or `x` back (or quit from an
+unfocused visualisation), `/` search, `?` help, and `r` reset.

@@ -3,7 +3,7 @@ use crate::models::{Edge, Graph};
 
 const NODE_DOTS: u8 = 0b0001_1011;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tone {
     Normal,
     Dim,
@@ -35,6 +35,7 @@ pub fn draw(
     height: usize,
     focus: Option<usize>,
     plane: Plane,
+    labels: bool,
 ) -> Vec<String> {
     let inner_width = width.saturating_sub(2);
     let inner_height = height.saturating_sub(2);
@@ -54,7 +55,7 @@ pub fn draw(
         draw_edge(graph, edge, &projected, &mut canvas, focus);
     }
     for (index, point) in projected.iter().enumerate() {
-        draw_node(graph, index, *point, &mut canvas, focus);
+        draw_node(graph, index, *point, &mut canvas, focus, labels);
     }
     frame(canvas, width)
 }
@@ -95,6 +96,7 @@ fn draw_node(
     point: (isize, isize),
     canvas: &mut [Vec<Cell>],
     focus: Option<usize>,
+    labels: bool,
 ) {
     let (x, y) = point;
     let visible = focus.is_none_or(|selected| graph.connected(selected, index));
@@ -106,7 +108,7 @@ fn draw_node(
         Tone::Dim
     };
     put_node(canvas, x, y, tone);
-    if visible {
+    if visible && labels {
         let offset = if tone == Tone::Green { 3 } else { 1 };
         let label_tone = if tone == Tone::Green {
             Tone::Green
@@ -203,12 +205,15 @@ fn put_node(canvas: &mut [Vec<Cell>], x: isize, y: isize, tone: Tone) {
 fn put_node_cell(canvas: &mut [Vec<Cell>], x: usize, y: usize, tone: Tone) {
     let Some(row) = canvas.get_mut(y) else { return };
     let Some(cell) = row.get_mut(x) else { return };
+    let existing_dots = cell.dots;
     cell.dots |= if tone == Tone::Green {
         u8::MAX
     } else {
         NODE_DOTS
     };
-    cell.tone = tone;
+    if tone != Tone::Dim || existing_dots == 0 {
+        cell.tone = tone;
+    }
 }
 
 fn put_dot(canvas: &mut [Vec<Cell>], x: isize, y: isize, tone: Tone) {
@@ -277,4 +282,18 @@ fn push_colored(line: &mut String, character: char, tone: Tone) {
 
 fn index_of(graph: &Graph, id: &str) -> usize {
     graph.nodes.iter().position(|node| node.id == id).unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dimmed_node_cannot_override_focused_node_colour() {
+        let mut canvas = vec![vec![Cell::default()]];
+        put_node_cell(&mut canvas, 0, 0, Tone::Green);
+        put_node_cell(&mut canvas, 0, 0, Tone::Dim);
+
+        assert_eq!(canvas[0][0].tone, Tone::Green);
+    }
 }
