@@ -1,7 +1,7 @@
-mod app;
-mod controls;
-mod figure;
-mod models;
+pub mod app;
+pub mod controls;
+pub mod figure;
+pub mod models;
 
 use std::{
     fs,

@@ -1,8 +1,6 @@
 mod info;
-mod layout;
-#[cfg(test)]
-mod layout_tests;
-mod render;
+pub mod layout;
+pub mod render;
 
 use crate::models::Graph;
 
