@@ -32,7 +32,14 @@ impl Visualization for LineView<'_> {
         Plane::new(true, true)
     }
 
-    fn draw(&self, width: usize, height: usize, focus: Option<usize>, plane: Plane) -> Vec<String> {
+    fn draw(
+        &self,
+        width: usize,
+        height: usize,
+        focus: Option<usize>,
+        plane: Plane,
+        labels: bool,
+    ) -> Vec<String> {
         let points = self
             .line
             .series
@@ -52,7 +59,15 @@ impl Visualization for LineView<'_> {
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
-        render::draw(&points, &self.line.series, width, height, focus, plane)
+        render::draw(
+            &points,
+            &self.line.series,
+            width,
+            height,
+            focus,
+            plane,
+            labels,
+        )
     }
 
     fn information(&self, focus: Option<usize>, width: usize, height: usize) -> Vec<String> {

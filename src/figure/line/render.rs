@@ -33,6 +33,7 @@ pub fn draw(
     height: usize,
     focus: Option<usize>,
     plane: Plane,
+    labels: bool,
 ) -> Vec<String> {
     let inner_width = width.saturating_sub(2);
     let inner_height = height.saturating_sub(2);
@@ -46,7 +47,7 @@ pub fn draw(
         };
         draw_series(&mut canvas, points, tone);
     }
-    draw_legend(&mut canvas, series, focus);
+    draw_legend(&mut canvas, series, focus, labels);
     frame(canvas, width)
 }
 
@@ -163,7 +164,10 @@ fn dot(x: usize, y: usize) -> u8 {
     [[1, 2, 4, 64], [8, 16, 32, 128]][x][y]
 }
 
-fn draw_legend(canvas: &mut [Vec<Cell>], series: &[Series], focus: Option<usize>) {
+fn draw_legend(canvas: &mut [Vec<Cell>], series: &[Series], focus: Option<usize>, labels: bool) {
+    if !labels {
+        return;
+    }
     for (index, series) in series.iter().enumerate() {
         let tone = if focus.is_some_and(|selected| selected != index) {
             Tone::Dim

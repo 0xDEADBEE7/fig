@@ -10,6 +10,7 @@ pub enum Action {
     Back,
     Search,
     Help,
+    ToggleLabels,
     Reset,
 }
 
@@ -49,6 +50,7 @@ fn navigation(key: KeyCode) -> Option<Action> {
 
 fn utility(key: KeyCode) -> Option<Action> {
     match key {
+        KeyCode::BackTab => Some(Action::ToggleLabels),
         KeyCode::Char('/') => Some(Action::Search),
         KeyCode::Char('?') => Some(Action::Help),
         KeyCode::Char('r') => Some(Action::Reset),
@@ -57,4 +59,4 @@ fn utility(key: KeyCode) -> Option<Action> {
     }
 }
 
-pub const HELP: &str = "h/j/k/l pan   J/K zoom   H/L previous/next node   Enter information   / search   ? help   r reset   b/q/x back or quit";
+pub const HELP: &str = "h/j/k/l pan   J/K zoom   H/L previous/next node   Enter information   Shift-Tab labels   / search   ? help   r reset   b/q/x back or quit";

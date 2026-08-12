@@ -10,7 +10,14 @@ pub use plane::Plane;
 
 pub trait Visualization {
     fn default_plane(&self) -> Plane;
-    fn draw(&self, width: usize, height: usize, focus: Option<usize>, plane: Plane) -> Vec<String>;
+    fn draw(
+        &self,
+        width: usize,
+        height: usize,
+        focus: Option<usize>,
+        plane: Plane,
+        labels: bool,
+    ) -> Vec<String>;
     fn information(&self, focus: Option<usize>, width: usize, height: usize) -> Vec<String>;
     fn find(&self, query: &str) -> Option<usize>;
     fn suggestion(&self, query: &str) -> Option<String>;

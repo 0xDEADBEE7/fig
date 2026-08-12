@@ -19,6 +19,7 @@ fn dimmed_series_emits_terminal_controls_not_literal_escapes() {
         6,
         Some(0),
         Plane::new(false, false),
+        true,
     )
     .join("\n");
     assert!(output.contains('\x1b'));
