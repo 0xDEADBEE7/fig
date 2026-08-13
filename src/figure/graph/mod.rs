@@ -56,9 +56,12 @@ impl Visualization for GraphView<'_> {
             .position(|node| fuzzy_match(self.label(node), &needle))
     }
 
-    fn suggestion(&self, query: &str) -> Option<String> {
-        self.find(query)
-            .map(|index| self.label(&self.graph.nodes[index]).to_owned())
+    fn labels(&self) -> Vec<String> {
+        self.graph
+            .nodes
+            .iter()
+            .map(|node| self.label(node).to_owned())
+            .collect()
     }
 
     fn position(&self, index: usize) -> (f64, f64) {

@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use anyhow::Context;
 use crossterm::{
     cursor::MoveTo,
-    event::{self, Event, KeyCode, KeyEventKind},
+    event::{self, Event, KeyEventKind},
     execute,
     terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -11,34 +11,44 @@ use crossterm::{
 use crate::{
     controls::{self, Action},
     figure::{self, Plane},
+    modal::{Modal, ModalAction, SearchAction, SearchModal},
     models::Figure,
+    settings::{self, Settings},
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum Screen {
     Visualisation,
     Information,
+    Settings,
 }
 
 struct State {
     screen: Screen,
     plane: Plane,
     focus: Option<usize>,
-    search: Option<String>,
+    search: Option<SearchModal>,
     help: bool,
     labels: bool,
+    settings: Settings,
+    modal: Modal<Settings>,
 }
 
 pub fn run(figure: Figure, max_width: u16, max_height: u16) -> anyhow::Result<()> {
     figure.validate()?;
     let visualization = figure::visualizer(&figure);
+    let default_plane = visualization.default_plane();
     let mut state = State {
         screen: Screen::Visualisation,
-        plane: visualization.default_plane(),
+        plane: default_plane,
         focus: None,
         search: None,
         help: false,
         labels: true,
+        settings: Settings {
+            plane: settings::PlaneSettings::from_plane(default_plane),
+        },
+        modal: Modal::new("settings", settings::items()),
     };
     let _terminal = Terminal::enter()?;
     loop {
@@ -49,7 +59,29 @@ pub fn run(figure: Figure, max_width: u16, max_height: u16) -> anyhow::Result<()
         if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
             continue;
         }
-        if handle_search(&mut state, key.code, &*visualization) {
+        if state.screen == Screen::Settings {
+            let closes = matches!(
+                state.modal.handle(key.code, &mut state.settings),
+                ModalAction::Close
+            );
+            state.settings.plane.apply(&mut state.plane);
+            if closes {
+                state.screen = Screen::Visualisation;
+            }
+            continue;
+        }
+        if let Some(search) = &mut state.search {
+            let action = search.handle(key.code);
+            search.update(visualization.labels().into_iter().enumerate());
+            match action {
+                SearchAction::Close => state.search = None,
+                SearchAction::Select(index) => {
+                    state.focus = Some(index);
+                    center_on(&mut state.plane, state.focus, &*visualization);
+                    state.search = None;
+                }
+                SearchAction::None => {}
+            }
             continue;
         }
         if state.help {
@@ -64,30 +96,6 @@ pub fn run(figure: Figure, max_width: u16, max_height: u16) -> anyhow::Result<()
         }
     }
     Ok(())
-}
-
-fn handle_search(
-    state: &mut State,
-    key: KeyCode,
-    visualization: &dyn figure::Visualization,
-) -> bool {
-    let Some(query) = &mut state.search else {
-        return false;
-    };
-    match key {
-        KeyCode::Enter => {
-            state.focus = visualization.find(query);
-            center_on(&mut state.plane, state.focus, visualization);
-            state.search = None;
-        }
-        KeyCode::Esc => state.search = None,
-        KeyCode::Backspace => {
-            query.pop();
-        }
-        KeyCode::Char(character) => query.push(character),
-        _ => {}
-    }
-    true
 }
 
 fn dispatch(action: Action, state: &mut State, visualization: &dyn figure::Visualization) -> bool {
@@ -110,13 +118,23 @@ fn dispatch(action: Action, state: &mut State, visualization: &dyn figure::Visua
             }
         }
         Action::Back => match state.screen {
+            Screen::Settings => state.screen = Screen::Visualisation,
             Screen::Information => state.screen = Screen::Visualisation,
             Screen::Visualisation if state.focus.is_some() => state.focus = None,
             Screen::Visualisation => return false,
         },
-        Action::Search => state.search = Some(String::new()),
+        Action::Search => {
+            let mut search = SearchModal::new();
+            search.reset();
+            search.update(visualization.labels().into_iter().enumerate());
+            state.search = Some(search);
+        }
         Action::Help => state.help = true,
         Action::ToggleLabels => state.labels = !state.labels,
+        Action::Settings => {
+            state.modal.reset();
+            state.screen = Screen::Settings;
+        }
         Action::Reset => {
             state.plane = visualization.default_plane();
             state.focus = None;
@@ -151,11 +169,21 @@ fn draw(
     let height = usize::from(terminal_height.min(max_height));
     anyhow::ensure!(width >= 30 && height >= 8, "terminal must be at least 30x8");
     let mut lines = match state.screen {
-        Screen::Visualisation => {
+        Screen::Visualisation | Screen::Settings => {
             visualization.draw(width, height - 1, state.focus, state.plane, state.labels)
         }
         Screen::Information => visualization.information(state.focus, width, height - 1),
     };
+    if state.screen == Screen::Settings {
+        state
+            .modal
+            .draw(&mut lines, &state.settings, width, height - 1);
+    }
+    if state.search.is_some() {
+        if let Some(search) = &state.search {
+            search.draw(&mut lines, width, height);
+        }
+    }
     lines.push(status(state, visualization));
     let mut stdout = io::stdout();
     execute!(stdout, MoveTo(0, 0), Clear(ClearType::All))?;
@@ -164,22 +192,21 @@ fn draw(
     Ok(())
 }
 
-fn status(state: &State, visualization: &dyn figure::Visualization) -> String {
+fn status(state: &State, _visualization: &dyn figure::Visualization) -> String {
     if state.help {
         return controls::HELP.to_owned();
     }
-    if let Some(query) = &state.search {
-        let match_label = visualization
-            .suggestion(query)
-            .map(|label| format!("  → {label}"))
-            .unwrap_or_default();
-        return format!("search: {query}{match_label}");
+    if state.search.is_some() {
+        return "search  type to filter  j/k navigate  Enter focus  Esc close".to_owned();
     }
     match state.screen {
         Screen::Visualisation => format!(
             "visualisation  labels: {}  Enter info  ? help",
             if state.labels { "on" } else { "off" }
         ),
+        Screen::Settings => {
+            "settings  type to search  j/k navigate  Enter/space toggle  b back".to_owned()
+        }
         Screen::Information => "information  b/q/x back".to_owned(),
     }
 }

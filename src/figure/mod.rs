@@ -26,7 +26,7 @@ pub trait Visualization {
     ) -> Vec<String>;
     fn information(&self, focus: Option<usize>, width: usize, height: usize) -> Vec<String>;
     fn find(&self, query: &str) -> Option<usize>;
-    fn suggestion(&self, query: &str) -> Option<String>;
+    fn labels(&self) -> Vec<String>;
     fn position(&self, index: usize) -> (f64, f64);
     fn len(&self) -> usize;
 }
