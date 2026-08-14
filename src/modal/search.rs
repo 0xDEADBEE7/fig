@@ -52,49 +52,47 @@ impl SearchModal {
 
     pub fn handle(&mut self, key: KeyCode) -> SearchAction {
         if self.editing {
-            match handle_search_input(&mut self.query, key) {
-                SearchInputAction::Close => return SearchAction::Close,
-                SearchInputAction::Submitted => {
-                    self.editing = false;
-                    return SearchAction::None;
-                }
-                SearchInputAction::None => return SearchAction::None,
-            }
+            return self.handle_editing(key);
         }
+        self.handle_navigation(key)
+    }
+
+    fn handle_editing(&mut self, key: KeyCode) -> SearchAction {
+        match handle_search_input(&mut self.query, key) {
+            SearchInputAction::Close => SearchAction::Close,
+            SearchInputAction::Submitted => {
+                self.editing = false;
+                SearchAction::None
+            }
+            SearchInputAction::None => SearchAction::None,
+        }
+    }
+
+    fn handle_navigation(&mut self, key: KeyCode) -> SearchAction {
         match key {
             KeyCode::Esc => SearchAction::Close,
-            KeyCode::Up if self.selected == 0 => {
+            KeyCode::Up | KeyCode::Char('k') if self.selected == 0 => {
                 self.editing = true;
                 SearchAction::None
             }
-            KeyCode::Up => {
+            KeyCode::Up | KeyCode::Char('k') => {
                 self.selected = self.selected.saturating_sub(1);
                 SearchAction::None
             }
-            KeyCode::Down => {
+            KeyCode::Down | KeyCode::Char('j') => {
                 self.selected = (self.selected + 1).min(self.results.len());
                 SearchAction::None
             }
-            KeyCode::Char('k') if self.selected == 0 => {
-                self.editing = true;
-                SearchAction::None
-            }
-            KeyCode::Char('k') => {
-                self.selected = self.selected.saturating_sub(1);
-                SearchAction::None
-            }
-            KeyCode::Char('j') => {
-                self.selected = (self.selected + 1).min(self.results.len());
-                SearchAction::None
-            }
-            KeyCode::Backspace | KeyCode::Char(_) => SearchAction::None,
-            KeyCode::Enter => self
-                .results
-                .get(self.selected)
-                .map(|(index, _)| SearchAction::Select(*index))
-                .unwrap_or(SearchAction::None),
+            KeyCode::Enter => self.selected_result(),
             _ => SearchAction::None,
         }
+    }
+
+    fn selected_result(&self) -> SearchAction {
+        self.results
+            .get(self.selected)
+            .map(|(index, _)| SearchAction::Select(*index))
+            .unwrap_or(SearchAction::None)
     }
 
     pub fn draw(&self, lines: &mut [String], width: usize, height: usize) {

@@ -198,27 +198,10 @@ pub(super) fn overlay_line(base: &str, overlay: &str, left: usize, width: usize)
 
     while let Some(character) = chars.next() {
         if character == '\x1b' {
-            let mut sequence = String::from('\x1b');
-            if chars.next_if_eq(&'[').is_some() {
-                sequence.push('[');
-                while let Some(character) = chars.next() {
-                    sequence.push(character);
-                    if ('@'..='~').contains(&character) {
-                        break;
-                    }
-                }
-                if sequence.ends_with('m') {
-                    if sequence == "\x1b[0m" || sequence == "\x1b[m" {
-                        style.clear();
-                    } else {
-                        style.push_str(&sequence);
-                    }
-                }
-            }
-            output.push_str(&sequence);
+            update_style(&mut chars, &mut output, &mut style);
             continue;
         }
-        if left <= column && column < left + overlay.len() && column < width {
+        if overlay_at(column, left, width, &overlay) {
             output.push_str("\x1b[0m");
             output.push_str(&overlay[column - left]);
             output.push_str(&style);
@@ -227,16 +210,55 @@ pub(super) fn overlay_line(base: &str, overlay: &str, left: usize, width: usize)
         }
         column += 1;
     }
-    while column < width {
-        if left <= column && column < left + overlay.len() {
+    append_remaining(&mut output, &overlay, &mut column, left, width);
+    output
+}
+
+fn update_style(
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    output: &mut String,
+    style: &mut String,
+) {
+    let mut sequence = String::from('\x1b');
+    if chars.next_if_eq(&'[').is_some() {
+        sequence.push('[');
+        while let Some(character) = chars.next() {
+            sequence.push(character);
+            if ('@'..='~').contains(&character) {
+                break;
+            }
+        }
+    }
+    if sequence.ends_with('m') {
+        if sequence == "\x1b[0m" || sequence == "\x1b[m" {
+            style.clear();
+        } else {
+            style.push_str(&sequence);
+        }
+    }
+    output.push_str(&sequence);
+}
+
+fn overlay_at(column: usize, left: usize, width: usize, overlay: &[String]) -> bool {
+    left <= column && column < left + overlay.len() && column < width
+}
+
+fn append_remaining(
+    output: &mut String,
+    overlay: &[String],
+    column: &mut usize,
+    left: usize,
+    width: usize,
+) {
+    while *column < width {
+        if overlay_at(*column, left, width, overlay) {
             output.push_str("\x1b[0m");
-            output.push_str(&overlay[column - left]);
+            output.push_str(&overlay[*column - left]);
         } else {
             output.push(' ');
         }
-        column += 1;
+        *column += 1;
     }
-    output
 }
 
 fn styled_columns(text: &str) -> Vec<String> {
@@ -245,28 +267,33 @@ fn styled_columns(text: &str) -> Vec<String> {
     let mut chars = text.chars().peekable();
     while let Some(character) = chars.next() {
         if character == '\x1b' {
-            let mut sequence = String::from('\x1b');
-            if chars.next_if_eq(&'[').is_some() {
-                sequence.push('[');
-                while let Some(character) = chars.next() {
-                    sequence.push(character);
-                    if ('@'..='~').contains(&character) {
-                        break;
-                    }
-                }
-            }
-            if sequence.ends_with('m') {
-                if sequence == "\x1b[0m" || sequence == "\x1b[m" {
-                    style.clear();
-                } else {
-                    style.push_str(&sequence);
-                }
-            }
+            apply_sequence(&mut chars, &mut style);
         } else {
             columns.push(format!("{style}{character}"));
         }
     }
     columns
+}
+
+fn apply_sequence(chars: &mut std::iter::Peekable<std::str::Chars<'_>>, style: &mut String) {
+    let mut sequence = String::from('\x1b');
+    if chars.next_if_eq(&'[').is_some() {
+        sequence.push('[');
+        while let Some(character) = chars.next() {
+            sequence.push(character);
+            if ('@'..='~').contains(&character) {
+                break;
+            }
+        }
+    }
+    if !sequence.ends_with('m') {
+        return;
+    }
+    if sequence == "\x1b[0m" || sequence == "\x1b[m" {
+        style.clear();
+    } else {
+        style.push_str(&sequence);
+    }
 }
 #[cfg(test)]
 mod tests {
