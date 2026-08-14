@@ -7,6 +7,11 @@ use crate::{
 enum Tone {
     Normal,
     Dim,
+    Red,
+    Green,
+    Blue,
+    Yellow,
+    Bright,
 }
 
 #[derive(Clone, Copy)]
@@ -34,6 +39,7 @@ pub fn draw(
     focus: Option<usize>,
     plane: Plane,
     labels: bool,
+    render_options: bool,
 ) -> Vec<String> {
     let inner_width = width.saturating_sub(2);
     let inner_height = height.saturating_sub(2);
@@ -42,28 +48,46 @@ pub fn draw(
     match focus {
         Some(selected) => {
             for (index, points) in points.iter().enumerate() {
-                if index != selected {
-                    draw_series(&mut canvas, points, Tone::Dim);
-                }
+                let configured =
+                    crate::figure::render_options::style(&series[index].fig, render_options);
+                let tone = if configured.override_focus
+                    || configured.color != crate::figure::render_options::Color::Default
+                {
+                    tone_for(configured.color)
+                } else {
+                    Tone::Dim
+                };
+                draw_series(&mut canvas, points, tone);
             }
             if let Some(points) = points.get(selected) {
-                redraw_focused_series(&mut canvas, points);
+                let configured =
+                    crate::figure::render_options::style(&series[selected].fig, render_options);
+                let tone = if configured.override_focus
+                    || configured.color != crate::figure::render_options::Color::Default
+                {
+                    tone_for(configured.color)
+                } else {
+                    Tone::Normal
+                };
+                redraw_focused_series(&mut canvas, points, tone);
             }
         }
         None => {
-            for points in points {
-                draw_series(&mut canvas, points, Tone::Normal);
+            for (index, points) in points.iter().enumerate() {
+                let configured =
+                    crate::figure::render_options::style(&series[index].fig, render_options);
+                draw_series(&mut canvas, points, tone_for(configured.color));
             }
         }
     }
-    draw_legend(&mut canvas, series, focus, labels);
+    draw_legend(&mut canvas, series, focus, labels, render_options);
     frame(canvas, width)
 }
 
-fn redraw_focused_series(canvas: &mut [Vec<Cell>], points: &[(isize, isize)]) {
+fn redraw_focused_series(canvas: &mut [Vec<Cell>], points: &[(isize, isize)], tone: Tone) {
     let width = canvas.first().map_or(0, Vec::len);
     let mut focused = vec![vec![Cell::default(); width]; canvas.len()];
-    draw_series(&mut focused, points, Tone::Normal);
+    draw_series(&mut focused, points, tone);
     for (canvas_row, focused_row) in canvas.iter_mut().zip(focused) {
         for (cell, focused_cell) in canvas_row.iter_mut().zip(focused_row) {
             if focused_cell.dots != 0 {
@@ -103,12 +127,25 @@ mod tests {
     fn focused_line_replaces_other_lines_at_an_overlap() {
         let mut canvas = background(Plane::new(false, false), 2, 1);
         draw_series(&mut canvas, &[(0, 0), (3, 3)], Tone::Dim);
-        redraw_focused_series(&mut canvas, &[(0, 3), (3, 0)]);
+        redraw_focused_series(&mut canvas, &[(0, 3), (3, 0)], Tone::Normal);
 
         assert_eq!(canvas[0][0].dots, 96);
         assert_eq!(canvas[0][0].tone, Tone::Normal);
     }
 }
+fn tone_for(color: crate::figure::render_options::Color) -> Tone {
+    use crate::figure::render_options::Color;
+    match color {
+        Color::Dim => Tone::Dim,
+        Color::Bright => Tone::Bright,
+        Color::Red => Tone::Red,
+        Color::Green => Tone::Green,
+        Color::Blue => Tone::Blue,
+        Color::Yellow => Tone::Yellow,
+        _ => Tone::Normal,
+    }
+}
+
 fn raster_line(canvas: &mut [Vec<Cell>], from: (isize, isize), to: (isize, isize), tone: Tone) {
     let Some((from, to)) = clip(from, to, canvas) else {
         return;
@@ -202,11 +239,18 @@ fn dot(x: usize, y: usize) -> u8 {
     [[1, 2, 4, 64], [8, 16, 32, 128]][x][y]
 }
 
-fn draw_legend(canvas: &mut [Vec<Cell>], series: &[Series], focus: Option<usize>, labels: bool) {
-    if !labels {
-        return;
-    }
+fn draw_legend(
+    canvas: &mut [Vec<Cell>],
+    series: &[Series],
+    focus: Option<usize>,
+    labels: bool,
+    render_options: bool,
+) {
     for (index, series) in series.iter().enumerate() {
+        let configured = crate::figure::render_options::style(&series.fig, render_options);
+        if !configured.show_label.unwrap_or(labels) {
+            continue;
+        }
         let tone = if focus.is_some_and(|selected| selected != index) {
             Tone::Dim
         } else {
@@ -256,5 +300,10 @@ fn push_toned(line: &mut String, character: char, tone: Tone) {
         Tone::Normal => line.push(character),
         // Keep the escape sequences as control bytes, as in graph::render.
         Tone::Dim => line.push_str(&format!("\x1b[38;5;240m{character}\x1b[0m")),
+        Tone::Red => line.push_str(&format!("\x1b[38;5;196m{character}\x1b[0m")),
+        Tone::Green => line.push_str(&format!("\x1b[38;5;40m{character}\x1b[0m")),
+        Tone::Blue => line.push_str(&format!("\x1b[38;5;33m{character}\x1b[0m")),
+        Tone::Yellow => line.push_str(&format!("\x1b[38;5;226m{character}\x1b[0m")),
+        Tone::Bright => line.push_str(&format!("\x1b[97m{character}\x1b[0m")),
     }
 }

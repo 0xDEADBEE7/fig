@@ -32,6 +32,7 @@ impl Visualization for GraphView<'_> {
         focus: Option<usize>,
         plane: Plane,
         labels: bool,
+        render_options: bool,
     ) -> Vec<String> {
         render::draw(
             self.graph,
@@ -41,6 +42,7 @@ impl Visualization for GraphView<'_> {
             focus,
             plane,
             labels,
+            render_options,
         )
     }
 

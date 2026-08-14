@@ -47,6 +47,7 @@ pub fn run(figure: Figure, max_width: u16, max_height: u16) -> anyhow::Result<()
         labels: true,
         settings: Settings {
             plane: settings::PlaneSettings::from_plane(default_plane),
+            render_options: true,
         },
         modal: Modal::new("settings", settings::items()),
     };
@@ -169,9 +170,14 @@ fn draw(
     let height = usize::from(terminal_height.min(max_height));
     anyhow::ensure!(width >= 30 && height >= 8, "terminal must be at least 30x8");
     let mut lines = match state.screen {
-        Screen::Visualisation | Screen::Settings => {
-            visualization.draw(width, height - 1, state.focus, state.plane, state.labels)
-        }
+        Screen::Visualisation | Screen::Settings => visualization.draw(
+            width,
+            height - 1,
+            state.focus,
+            state.plane,
+            state.labels,
+            state.settings.render_options,
+        ),
         Screen::Information => visualization.information(state.focus, width, height - 1),
     };
     if state.screen == Screen::Settings {

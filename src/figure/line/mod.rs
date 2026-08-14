@@ -39,6 +39,7 @@ impl Visualization for LineView<'_> {
         focus: Option<usize>,
         plane: Plane,
         labels: bool,
+        render_options: bool,
     ) -> Vec<String> {
         let points = self
             .line
@@ -67,6 +68,7 @@ impl Visualization for LineView<'_> {
             focus,
             plane,
             labels,
+            render_options,
         )
     }
 

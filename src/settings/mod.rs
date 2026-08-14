@@ -4,6 +4,11 @@ pub use state::{PlaneSettings, Settings, settings_from_value};
 pub fn items() -> Vec<crate::modal::Item<Settings>> {
     vec![
         crate::modal::Item {
+            label: "data-driven-rendering",
+            value: |settings| yes(settings.render_options).to_owned(),
+            activate: |settings| settings.render_options = !settings.render_options,
+        },
+        crate::modal::Item {
             label: "axis-lines",
             value: |settings| yes(settings.plane.axis_lines).to_owned(),
             activate: |settings| settings.plane.axis_lines = !settings.plane.axis_lines,

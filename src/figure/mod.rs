@@ -1,3 +1,5 @@
+pub mod render_options;
+
 #[cfg(feature = "test-support")]
 pub mod graph;
 #[cfg(not(feature = "test-support"))]
@@ -23,6 +25,7 @@ pub trait Visualization {
         focus: Option<usize>,
         plane: Plane,
         labels: bool,
+        render_options: bool,
     ) -> Vec<String>;
     fn information(&self, focus: Option<usize>, width: usize, height: usize) -> Vec<String>;
     fn find(&self, query: &str) -> Option<usize>;

@@ -36,6 +36,7 @@ impl PlaneSettings {
 #[serde(default)]
 pub struct Settings {
     pub plane: PlaneSettings,
+    pub render_options: bool,
 }
 
 pub fn settings_from_value(value: &serde_json::Value) -> Settings {
