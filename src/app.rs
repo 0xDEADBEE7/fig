@@ -60,88 +60,119 @@ pub fn run(figure: Figure, max_width: u16, max_height: u16) -> anyhow::Result<()
         if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
             continue;
         }
-        if state.screen == Screen::Settings {
-            let closes = matches!(
-                state.modal.handle(key.code, &mut state.settings),
-                ModalAction::Close
-            );
-            state.settings.plane.apply(&mut state.plane);
-            if closes {
-                state.screen = Screen::Visualisation;
-            }
-            continue;
-        }
-        if let Some(search) = &mut state.search {
-            let action = search.handle(key.code);
-            search.update(visualization.labels().into_iter().enumerate());
-            match action {
-                SearchAction::Close => state.search = None,
-                SearchAction::Select(index) => {
-                    state.focus = Some(index);
-                    center_on(&mut state.plane, state.focus, &*visualization);
-                    state.search = None;
-                }
-                SearchAction::None => {}
-            }
-            continue;
-        }
-        if state.help {
-            state.help = false;
-            continue;
-        }
-        let Some(action) = controls::action(key) else {
-            continue;
-        };
-        if !dispatch(action, &mut state, &*visualization) {
+        if !handle_key(key, &mut state, &*visualization) {
             break;
         }
     }
     Ok(())
 }
 
-fn dispatch(action: Action, state: &mut State, visualization: &dyn figure::Visualization) -> bool {
-    match action {
-        Action::Pan(x, y) => {
-            state.plane.pan(x, y);
-        }
-        Action::Zoom(factor) => state.plane.zoom(factor),
-        Action::Previous => {
-            state.focus = Some(previous(state.focus, visualization.len()));
-            center_on(&mut state.plane, state.focus, visualization);
-        }
-        Action::Next => {
-            state.focus = Some(next(state.focus, visualization.len()));
-            center_on(&mut state.plane, state.focus, visualization);
-        }
-        Action::OpenInformation => {
-            if state.focus.is_some() {
-                state.screen = Screen::Information;
-            }
-        }
-        Action::Back => match state.screen {
-            Screen::Settings => state.screen = Screen::Visualisation,
-            Screen::Information => state.screen = Screen::Visualisation,
-            Screen::Visualisation if state.focus.is_some() => state.focus = None,
-            Screen::Visualisation => return false,
-        },
-        Action::Search => {
-            let mut search = SearchModal::new();
-            search.reset();
-            search.update(visualization.labels().into_iter().enumerate());
-            state.search = Some(search);
-        }
-        Action::Help => state.help = true,
-        Action::ToggleLabels => state.labels = !state.labels,
-        Action::Settings => {
-            state.modal.reset();
-            state.screen = Screen::Settings;
-        }
-        Action::Reset => {
-            state.plane = visualization.default_plane();
-            state.focus = None;
-        }
+fn handle_key(
+    key: crossterm::event::KeyEvent,
+    state: &mut State,
+    visualization: &dyn figure::Visualization,
+) -> bool {
+    if state.screen == Screen::Settings {
+        return handle_settings(key.code, state);
+    }
+    if state.search.is_some() {
+        handle_search(key.code, state, visualization);
+        return true;
+    }
+    if state.help {
+        state.help = false;
+        return true;
+    }
+    controls::action(key).is_none_or(|action| dispatch(action, state, visualization))
+}
+
+fn handle_settings(key: crossterm::event::KeyCode, state: &mut State) -> bool {
+    let closes = matches!(
+        state.modal.handle(key, &mut state.settings),
+        ModalAction::Close
+    );
+    state.settings.plane.apply(&mut state.plane);
+    if closes {
+        state.screen = Screen::Visualisation;
     }
     true
+}
+
+fn handle_search(
+    key: crossterm::event::KeyCode,
+    state: &mut State,
+    visualization: &dyn figure::Visualization,
+) {
+    let search = state.search.as_mut().expect("search checked by caller");
+    let action = search.handle(key);
+    search.update(visualization.labels().into_iter().enumerate());
+    match action {
+        SearchAction::Close => state.search = None,
+        SearchAction::Select(index) => {
+            state.focus = Some(index);
+            center_on(&mut state.plane, state.focus, visualization);
+            state.search = None;
+        }
+        SearchAction::None => {}
+    }
+}
+
+fn dispatch(action: Action, state: &mut State, visualization: &dyn figure::Visualization) -> bool {
+    match action {
+        Action::Pan(x, y) => state.plane.pan(x, y),
+        Action::Zoom(factor) => state.plane.zoom(factor),
+        Action::Previous | Action::Next => move_focus(action, state, visualization),
+        Action::OpenInformation => open_information(state),
+        Action::Back => return go_back(state),
+        Action::Search => start_search(state, visualization),
+        Action::Help => state.help = true,
+        Action::ToggleLabels => state.labels = !state.labels,
+        Action::Settings => open_settings(state),
+        Action::Reset => reset(state, visualization),
+    }
+    true
+}
+
+fn move_focus(action: Action, state: &mut State, visualization: &dyn figure::Visualization) {
+    let index = match action {
+        Action::Previous => previous(state.focus, visualization.len()),
+        Action::Next => next(state.focus, visualization.len()),
+        _ => unreachable!(),
+    };
+    state.focus = Some(index);
+    center_on(&mut state.plane, state.focus, visualization);
+}
+
+fn open_information(state: &mut State) {
+    if state.focus.is_some() {
+        state.screen = Screen::Information;
+    }
+}
+
+fn go_back(state: &mut State) -> bool {
+    match state.screen {
+        Screen::Settings | Screen::Information => state.screen = Screen::Visualisation,
+        Screen::Visualisation if state.focus.is_some() => state.focus = None,
+        Screen::Visualisation => return false,
+    }
+    true
+}
+
+fn start_search(state: &mut State, visualization: &dyn figure::Visualization) {
+    let mut search = SearchModal::new();
+    search.reset();
+    search.update(visualization.labels().into_iter().enumerate());
+    state.search = Some(search);
+}
+
+fn open_settings(state: &mut State) {
+    state.modal.reset();
+    state.screen = Screen::Settings;
+}
+
+fn reset(state: &mut State, visualization: &dyn figure::Visualization) {
+    state.plane = visualization.default_plane();
+    state.focus = None;
 }
 
 fn previous(focus: Option<usize>, count: usize) -> usize {
@@ -190,7 +221,7 @@ fn draw(
             search.draw(&mut lines, width, height);
         }
     }
-    lines.push(status(state, visualization));
+    lines.push(status(state));
     let mut stdout = io::stdout();
     execute!(stdout, MoveTo(0, 0), Clear(ClearType::All))?;
     write!(stdout, "{}", lines.join("\r\n"))?;
@@ -198,7 +229,7 @@ fn draw(
     Ok(())
 }
 
-fn status(state: &State, _visualization: &dyn figure::Visualization) -> String {
+fn status(state: &State) -> String {
     if state.help {
         return controls::HELP.to_owned();
     }
