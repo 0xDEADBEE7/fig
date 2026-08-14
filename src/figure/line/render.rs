@@ -46,44 +46,61 @@ pub fn draw(
     let mut canvas = background(plane, inner_width, inner_height);
 
     match focus {
-        Some(selected) => {
-            for (index, points) in points.iter().enumerate() {
-                let configured =
-                    crate::figure::render_options::style(&series[index].fig, render_options);
-                let tone = if configured.override_focus
-                    || configured.color != crate::figure::render_options::Color::Default
-                {
-                    tone_for(configured.color)
-                } else {
-                    Tone::Dim
-                };
-                draw_series(&mut canvas, points, tone);
-            }
-            if let Some(points) = points.get(selected) {
-                let configured =
-                    crate::figure::render_options::style(&series[selected].fig, render_options);
-                let tone = if configured.override_focus
-                    || configured.color != crate::figure::render_options::Color::Default
-                {
-                    tone_for(configured.color)
-                } else {
-                    Tone::Normal
-                };
-                redraw_focused_series(&mut canvas, points, tone);
-            }
-        }
-        None => {
-            for (index, points) in points.iter().enumerate() {
-                let configured =
-                    crate::figure::render_options::style(&series[index].fig, render_options);
-                draw_series(&mut canvas, points, tone_for(configured.color));
-            }
-        }
+        Some(selected) => draw_focused(&mut canvas, points, series, selected, render_options),
+        None => draw_all(&mut canvas, points, series, render_options),
     }
+
     draw_legend(&mut canvas, series, focus, labels, render_options);
     frame(canvas, width)
 }
 
+fn draw_all(
+    canvas: &mut [Vec<Cell>],
+    points: &[Vec<(isize, isize)>],
+    series: &[Series],
+    render_options: bool,
+) {
+    for (index, points) in points.iter().enumerate() {
+        draw_series(
+            canvas,
+            points,
+            tone_for(style(&series[index], render_options).color),
+        );
+    }
+}
+
+fn draw_focused(
+    canvas: &mut [Vec<Cell>],
+    points: &[Vec<(isize, isize)>],
+    series: &[Series],
+    selected: usize,
+    render_options: bool,
+) {
+    for (index, points) in points.iter().enumerate() {
+        let configured = style(&series[index], render_options);
+        let tone = if configured.override_focus || configured.color != Color::Default {
+            tone_for(configured.color)
+        } else {
+            Tone::Dim
+        };
+        draw_series(canvas, points, tone);
+    }
+    if let Some(points) = points.get(selected) {
+        let configured = style(&series[selected], render_options);
+        let tone = if configured.override_focus || configured.color != Color::Default {
+            tone_for(configured.color)
+        } else {
+            Tone::Normal
+        };
+        redraw_focused_series(canvas, points, tone);
+    }
+}
+
+fn style(series: &Series, render_options: bool) -> crate::figure::render_options::Style {
+    crate::figure::render_options::style(&series.fig, render_options)
+}
+
+use crate::figure::render_options::Color;
 fn redraw_focused_series(canvas: &mut [Vec<Cell>], points: &[(isize, isize)], tone: Tone) {
     let width = canvas.first().map_or(0, Vec::len);
     let mut focused = vec![vec![Cell::default(); width]; canvas.len()];
