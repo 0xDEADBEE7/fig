@@ -9,7 +9,8 @@ const COOLING: f64 = 0.0228;
 const VELOCITY_RETENTION: f64 = 0.6;
 const HOP_DISTANCE: f64 = 1.0;
 const STRESS_STRENGTH: f64 = 0.45;
-const COMPONENT_CHARGE: f64 = 0.8;
+const COMPONENT_DISTANCE: f64 = 2.0;
+const COMPONENT_STRENGTH: f64 = 0.14;
 const COLLISION_DISTANCE: f64 = 0.35;
 const COLLISION_STRENGTH: f64 = 0.7;
 const CENTER_STRENGTH: f64 = 0.01;
@@ -69,7 +70,8 @@ fn stress(points: &[(f64, f64)], distances: &Distances, force: &mut [(f64, f64)]
                 let strength = (ideal - distance) / distance * STRESS_STRENGTH * weight * alpha;
                 displace(force, left, right, dx * strength, dy * strength);
             } else {
-                let strength = COMPONENT_CHARGE * alpha / distance_squared;
+                let strength =
+                    (COMPONENT_DISTANCE - distance) / distance * COMPONENT_STRENGTH * alpha;
                 displace(force, left, right, dx * strength, dy * strength);
             }
 

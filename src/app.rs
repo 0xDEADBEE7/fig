@@ -117,6 +117,7 @@ fn handle_search(
     }
 }
 
+/// Applies a semantic interaction action to the current session.
 fn dispatch(action: Action, state: &mut State, visualization: &dyn figure::Visualization) -> bool {
     match action {
         Action::Pan(x, y) => state.plane.pan(x, y),
