@@ -39,6 +39,7 @@ impl Visualization for LineView<'_> {
         focus: Option<usize>,
         plane: Plane,
         labels: bool,
+        render_options: bool,
     ) -> Vec<String> {
         let points = self
             .line
@@ -67,6 +68,7 @@ impl Visualization for LineView<'_> {
             focus,
             plane,
             labels,
+            render_options,
         )
     }
 
@@ -82,9 +84,12 @@ impl Visualization for LineView<'_> {
             .position(|series| series.label.to_lowercase().contains(&query))
     }
 
-    fn suggestion(&self, query: &str) -> Option<String> {
-        self.find(query)
-            .map(|index| self.line.series[index].label.clone())
+    fn labels(&self) -> Vec<String> {
+        self.line
+            .series
+            .iter()
+            .map(|series| series.label.clone())
+            .collect()
     }
 
     fn position(&self, _index: usize) -> (f64, f64) {

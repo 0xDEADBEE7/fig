@@ -12,6 +12,7 @@ pub enum Action {
     Help,
     ToggleLabels,
     Reset,
+    Settings,
 }
 
 pub fn action(key: KeyEvent) -> Option<Action> {
@@ -54,9 +55,10 @@ fn utility(key: KeyCode) -> Option<Action> {
         KeyCode::Char('/') => Some(Action::Search),
         KeyCode::Char('?') => Some(Action::Help),
         KeyCode::Char('r') => Some(Action::Reset),
+        KeyCode::Char('s') => Some(Action::Settings),
         KeyCode::Char('b' | 'q' | 'x') => Some(Action::Back),
         _ => None,
     }
 }
 
-pub const HELP: &str = "h/j/k/l pan   J/K zoom   H/L previous/next node   Enter information   Shift-Tab labels   / search   ? help   r reset   b/q/x back or quit";
+pub const HELP: &str = "h/j/k/l pan   J/K zoom   H/L previous/next node   Enter information   Shift-Tab labels   / search   s settings   ? help   r reset   b/q/x back or quit";

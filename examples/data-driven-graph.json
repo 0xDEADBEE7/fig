@@ -1,0 +1,75 @@
+{
+  "type": "graph",
+  "nodes": [
+    {
+      "id": "api",
+      "label": "API",
+      "fig": {
+        "color": "green",
+        "size": 2,
+        "override-focus": true
+      }
+    },
+    {
+      "id": "worker",
+      "label": "Worker",
+      "fig": {
+        "color": "#12abef"
+      }
+    },
+    {
+      "id": "database",
+      "label": "Database",
+      "fig": {
+        "color": "red",
+        "size": 3
+      }
+    },
+    {
+      "id": "cache",
+      "label": "Cache",
+      "fig": {
+        "color": "bright"
+      }
+    },
+    {
+      "id": "legacy",
+      "label": "Legacy",
+      "fig": {
+        "color": "dim",
+        "override-focus": false
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "api",
+      "to": "worker",
+      "fig": {
+        "color": "blue"
+      }
+    },
+    {
+      "from": "worker",
+      "to": "database",
+      "fig": {
+        "color": "red",
+        "size": 2
+      }
+    },
+    {
+      "from": "worker",
+      "to": "cache",
+      "fig": {
+        "color": "#f0c040"
+      }
+    },
+    {
+      "from": "legacy",
+      "to": "api",
+      "fig": {
+        "color": "dim"
+      }
+    }
+  ]
+}

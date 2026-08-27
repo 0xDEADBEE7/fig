@@ -36,6 +36,7 @@ pub fn draw(
     focus: Option<usize>,
     plane: Plane,
     labels: bool,
+    render_options: bool,
 ) -> Vec<String> {
     let inner_width = width.saturating_sub(2);
     let inner_height = height.saturating_sub(2);
@@ -52,11 +53,19 @@ pub fn draw(
         .collect::<Vec<Vec<Cell>>>();
     let projected = project(points, plane, inner_width, inner_height);
     for edge in &graph.edges {
-        draw_edge(graph, edge, &projected, &mut canvas, focus);
+        draw_edge(graph, edge, &projected, &mut canvas, focus, render_options);
     }
     for (index, point) in projected.iter().enumerate() {
-        draw_node(graph, index, *point, &mut canvas, focus, labels);
+        draw_node(graph, index, *point, &mut canvas, focus, render_options);
     }
+    draw_labels(
+        graph,
+        &projected,
+        &mut canvas,
+        focus,
+        labels,
+        render_options,
+    );
     frame(canvas, width)
 }
 
@@ -78,11 +87,17 @@ fn draw_edge(
     points: &[(isize, isize)],
     canvas: &mut [Vec<Cell>],
     focus: Option<usize>,
+    render_options: bool,
 ) {
     let from_index = index_of(graph, &edge.from);
     let to_index = index_of(graph, &edge.to);
     let (from, to) = (points[from_index], points[to_index]);
-    let tone = if focus.is_some_and(|selected| selected != from_index && selected != to_index) {
+    let configured = crate::figure::render_options::style(&edge.fig, render_options);
+    let tone = if configured.override_focus
+        || configured.color != crate::figure::render_options::Color::Default
+    {
+        tone_for(configured.color)
+    } else if focus.is_some_and(|selected| selected != from_index && selected != to_index) {
         Tone::Dim
     } else {
         Tone::Normal
@@ -96,11 +111,16 @@ fn draw_node(
     point: (isize, isize),
     canvas: &mut [Vec<Cell>],
     focus: Option<usize>,
-    labels: bool,
+    render_options: bool,
 ) {
     let (x, y) = point;
     let visible = focus.is_none_or(|selected| graph.connected(selected, index));
-    let tone = if focus == Some(index) {
+    let configured = crate::figure::render_options::style(&graph.nodes[index].fig, render_options);
+    let tone = if configured.override_focus
+        || configured.color != crate::figure::render_options::Color::Default
+    {
+        tone_for(configured.color)
+    } else if focus == Some(index) {
         Tone::Green
     } else if visible {
         Tone::Red
@@ -108,20 +128,44 @@ fn draw_node(
         Tone::Dim
     };
     put_node(canvas, x, y, tone);
-    if visible && labels {
-        let offset = if tone == Tone::Green { 3 } else { 1 };
-        let label_tone = if tone == Tone::Green {
+}
+
+fn draw_labels(
+    graph: &Graph,
+    points: &[(isize, isize)],
+    canvas: &mut [Vec<Cell>],
+    focus: Option<usize>,
+    labels: bool,
+    render_options: bool,
+) {
+    for (index, &(x, y)) in points.iter().enumerate() {
+        let visible = focus.is_none_or(|selected| graph.connected(selected, index));
+        let configured =
+            crate::figure::render_options::style(&graph.nodes[index].fig, render_options);
+        if !configured.show_label.unwrap_or(labels && visible) {
+            continue;
+        }
+        let tone = if configured.override_focus
+            || configured.color != crate::figure::render_options::Color::Default
+        {
+            tone_for(configured.color)
+        } else if focus == Some(index) {
             Tone::Green
         } else {
             Tone::Normal
         };
-        write_label(
-            canvas,
-            x / 2 + offset,
-            y / 4,
-            graph.node_label(index),
-            label_tone,
-        );
+        let offset = if tone == Tone::Green { 3 } else { 1 };
+        write_label(canvas, x / 2 + offset, y / 4, graph.node_label(index), tone);
+    }
+}
+
+fn tone_for(color: crate::figure::render_options::Color) -> Tone {
+    use crate::figure::render_options::Color;
+    match color {
+        Color::Dim => Tone::Dim,
+        Color::Red => Tone::Red,
+        Color::Green => Tone::Green,
+        _ => Tone::Normal,
     }
 }
 

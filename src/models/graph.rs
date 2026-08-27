@@ -16,6 +16,8 @@ pub struct Node {
     #[serde(default)]
     pub label: Option<String>,
     #[serde(default)]
+    pub fig: Value,
+    #[serde(default)]
     pub metadata: Value,
 }
 
@@ -25,6 +27,8 @@ pub struct Edge {
     pub from: String,
     #[serde(alias = "target")]
     pub to: String,
+    #[serde(default)]
+    pub fig: Value,
 }
 
 impl Graph {

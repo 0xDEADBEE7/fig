@@ -31,12 +31,29 @@ fn connected_nodes_are_closer_than_unrelated_nodes() {
 }
 
 #[test]
+fn disconnected_nodes_stay_within_a_reasonable_range() {
+    let points = force_directed(&graph(6, &[(0, 1), (1, 2)]));
+    let linked = [(0, 1), (1, 2)]
+        .iter()
+        .map(|&(from, to)| distance(points[from], points[to]))
+        .sum::<f64>()
+        / 2.0;
+    let unrelated = [(0, 3), (1, 4), (2, 5)]
+        .iter()
+        .map(|&(from, to)| distance(points[from], points[to]))
+        .sum::<f64>()
+        / 3.0;
+    assert!(unrelated < linked * 1.8);
+}
+
+#[test]
 fn layout_is_deterministic_and_separates_nodes() {
     let graph = graph(8, &[(0, 1), (1, 2), (2, 3), (3, 4)]);
     let first = force_directed(&graph);
     assert_eq!(first, force_directed(&graph));
     assert!(minimum_distance(&first) > 0.01);
 }
+
 
 #[test]
 fn dense_neighborhoods_do_not_collapse_into_a_ball() {

@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
 pub struct Line {
@@ -13,6 +14,8 @@ pub struct Line {
 pub struct Series {
     pub label: String,
     pub points: Vec<Point>,
+    #[serde(default)]
+    pub fig: Value,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
